@@ -4,6 +4,7 @@ QMS CLI Commands Module
 Contains all command implementations for the QMS CLI.
 """
 import shutil
+import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
 
