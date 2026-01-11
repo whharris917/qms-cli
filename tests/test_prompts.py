@@ -18,7 +18,8 @@ if str(QMS_CLI_DIR) not in sys.path:
 from prompts import (
     PromptRegistry, PromptConfig, ChecklistItem,
     get_prompt_registry, DEFAULT_REVIEW_CONFIG, DEFAULT_APPROVAL_CONFIG,
-    CR_POST_REVIEW_CONFIG, SOP_REVIEW_CONFIG
+    CR_POST_REVIEW_CONFIG, SOP_REVIEW_CONFIG,
+    load_config_from_yaml, get_prompt_file_path, PROMPTS_DIR
 )
 
 
@@ -70,15 +71,23 @@ class TestPromptRegistry:
         assert len(procedure_items) > 0, "SOP review should have procedure checks"
 
     def test_fallback_to_default(self):
-        """Unknown doc type falls back to default config."""
+        """Unknown doc type falls back to workflow default config."""
         registry = PromptRegistry()
+        # Unknown doc type should fall back to workflow default (review/review/default.yaml)
         config1 = registry.get_config("REVIEW", "REVIEW", "UNKNOWN_TYPE")
-        config2 = registry.get_config("REVIEW", None, None)
-        # Should get the default review config
-        assert config1 is config2
+        config2 = registry.get_config("REVIEW", "REVIEW", "ANOTHER_UNKNOWN")
+        # Both should get the same workflow default config
+        assert len(config1.checklist_items) == len(config2.checklist_items)
+        assert len(config1.critical_reminders) == len(config2.critical_reminders)
 
     def test_register_custom_config(self):
-        """Can register custom configuration."""
+        """In-memory registration is used as fallback when no YAML files exist.
+
+        Note (CR-027): YAML file loading takes priority over in-memory registration.
+        This test verifies the in-memory registration mechanism still works by testing
+        that configs can be registered and stored internally. In practice, YAML files
+        should be used for all prompt customization.
+        """
         registry = PromptRegistry()
         custom_config = PromptConfig(
             checklist_items=[
@@ -87,12 +96,14 @@ class TestPromptRegistry:
             critical_reminders=["Custom reminder"]
         )
 
-        registry.register("REVIEW", "REVIEW", "CUSTOM_TYPE", custom_config)
-        retrieved = registry.get_config("REVIEW", "REVIEW", "CUSTOM_TYPE")
+        # Register a custom config
+        registry.register("REVIEW", "CUSTOM_WORKFLOW", "CUSTOM_TYPE", custom_config)
 
-        assert retrieved is custom_config
-        assert len(retrieved.checklist_items) == 1
-        assert retrieved.checklist_items[0].item == "Custom check item"
+        # Verify it was stored in the internal registry
+        key = ("REVIEW", "CUSTOM_WORKFLOW", "CUSTOM_TYPE")
+        assert key in registry._configs
+        assert registry._configs[key] is custom_config
+        assert registry._configs[key].checklist_items[0].item == "Custom check item"
 
 
 class TestPromptGeneration:
@@ -339,3 +350,138 @@ class TestDefaultConfigs:
         """SOP review config extends default with procedure checks."""
         # SOP review should have more items than default
         assert len(SOP_REVIEW_CONFIG.checklist_items) >= len(DEFAULT_REVIEW_CONFIG.checklist_items)
+
+
+# =============================================================================
+# CR-027: YAML File Loading Tests
+# =============================================================================
+
+class TestYamlFileLoading:
+    """Tests for YAML file loading functionality (CR-027)."""
+
+    def test_prompts_directory_exists(self):
+        """Prompts directory exists."""
+        assert PROMPTS_DIR.exists(), f"Prompts directory not found: {PROMPTS_DIR}"
+        assert PROMPTS_DIR.is_dir()
+
+    def test_review_default_yaml_exists(self):
+        """Default review YAML file exists."""
+        default_path = PROMPTS_DIR / "review" / "default.yaml"
+        assert default_path.exists(), f"review/default.yaml not found: {default_path}"
+
+    def test_approval_default_yaml_exists(self):
+        """Default approval YAML file exists."""
+        default_path = PROMPTS_DIR / "approval" / "default.yaml"
+        assert default_path.exists(), f"approval/default.yaml not found: {default_path}"
+
+    def test_cr_post_review_yaml_exists(self):
+        """CR post-review YAML file exists."""
+        cr_path = PROMPTS_DIR / "review" / "post_review" / "cr.yaml"
+        assert cr_path.exists(), f"review/post_review/cr.yaml not found: {cr_path}"
+
+    def test_sop_review_yaml_exists(self):
+        """SOP review YAML file exists."""
+        sop_path = PROMPTS_DIR / "review" / "review" / "sop.yaml"
+        assert sop_path.exists(), f"review/review/sop.yaml not found: {sop_path}"
+
+    def test_load_config_from_yaml_returns_prompt_config(self):
+        """load_config_from_yaml returns PromptConfig."""
+        default_path = PROMPTS_DIR / "review" / "default.yaml"
+        config = load_config_from_yaml(default_path)
+        assert config is not None
+        assert isinstance(config, PromptConfig)
+
+    def test_load_config_from_yaml_has_checklist_items(self):
+        """Loaded config has checklist items."""
+        default_path = PROMPTS_DIR / "review" / "default.yaml"
+        config = load_config_from_yaml(default_path)
+        assert len(config.checklist_items) > 0
+
+    def test_load_config_from_yaml_has_critical_reminders(self):
+        """Loaded config has critical reminders."""
+        default_path = PROMPTS_DIR / "review" / "default.yaml"
+        config = load_config_from_yaml(default_path)
+        assert len(config.critical_reminders) > 0
+
+    def test_load_config_from_yaml_nonexistent_returns_none(self):
+        """load_config_from_yaml returns None for nonexistent file."""
+        nonexistent = PROMPTS_DIR / "nonexistent" / "file.yaml"
+        config = load_config_from_yaml(nonexistent)
+        assert config is None
+
+
+class TestYamlFallbackChain:
+    """Tests for YAML file fallback chain (CR-027)."""
+
+    def test_get_prompt_file_path_exact_match(self):
+        """Finds exact match file (cr.yaml for CR post-review)."""
+        path = get_prompt_file_path("REVIEW", "POST_REVIEW", "CR")
+        assert path is not None
+        assert path.name == "cr.yaml"
+        assert "post_review" in str(path)
+
+    def test_get_prompt_file_path_workflow_default(self):
+        """Falls back to workflow default when no doc-type match."""
+        path = get_prompt_file_path("REVIEW", "PRE_REVIEW", "UNKNOWN")
+        assert path is not None
+        assert path.name == "default.yaml"
+        assert "pre_review" in str(path)
+
+    def test_get_prompt_file_path_task_type_default(self):
+        """Falls back to task type default when no workflow match."""
+        path = get_prompt_file_path("REVIEW", "UNKNOWN_WORKFLOW", "UNKNOWN")
+        assert path is not None
+        assert path.name == "default.yaml"
+        assert "review" in str(path)
+
+    def test_get_prompt_file_path_case_insensitive(self):
+        """Path lookup is case-insensitive."""
+        path1 = get_prompt_file_path("REVIEW", "POST_REVIEW", "CR")
+        path2 = get_prompt_file_path("review", "post_review", "cr")
+        assert path1 == path2
+
+
+class TestYamlIntegration:
+    """Integration tests for YAML file loading with PromptRegistry (CR-027)."""
+
+    def test_registry_loads_cr_post_review_from_yaml(self):
+        """Registry loads CR post-review config from YAML file."""
+        registry = PromptRegistry()
+        config = registry.get_config("REVIEW", "POST_REVIEW", "CR")
+
+        # Should have execution checks from YAML
+        execution_items = [
+            item for item in config.checklist_items
+            if "execution" in item.category.lower() or "EI" in item.item
+        ]
+        assert len(execution_items) > 0
+
+    def test_registry_loads_sop_review_from_yaml(self):
+        """Registry loads SOP review config from YAML file."""
+        registry = PromptRegistry()
+        config = registry.get_config("REVIEW", "REVIEW", "SOP")
+
+        # Should have procedure checks from YAML
+        procedure_items = [
+            item for item in config.checklist_items
+            if "procedure" in item.category.lower()
+        ]
+        assert len(procedure_items) > 0
+
+    def test_registry_loads_default_review_from_yaml(self):
+        """Registry loads default review config from YAML file."""
+        registry = PromptRegistry()
+        config = registry.get_config("REVIEW", "PRE_REVIEW", "UNKNOWN")
+
+        # Should have standard checks
+        assert len(config.checklist_items) > 0
+        assert len(config.critical_reminders) > 0
+
+    def test_registry_loads_approval_from_yaml(self):
+        """Registry loads approval config from YAML file."""
+        registry = PromptRegistry()
+        config = registry.get_config("APPROVAL", "PRE_APPROVAL", "CR")
+
+        # Should have approval checks
+        assert len(config.checklist_items) > 0
+        assert len(config.critical_reminders) > 0

@@ -153,6 +153,7 @@ Then route for review:
         task_path = inbox_path / f"{task_id}.md"
 
         # Generate enhanced task content with mandatory checklist and structured format
+        # CR-027: Pass doc_type for prompt customization
         if task_type == "REVIEW":
             task_content = generate_review_task_content(
                 doc_id=doc_id,
@@ -160,7 +161,8 @@ Then route for review:
                 workflow_type=workflow_type,
                 assignee=assignee,
                 assigned_by=user,
-                task_id=task_id
+                task_id=task_id,
+                doc_type=doc_type
             )
         else:
             task_content = generate_approval_task_content(
@@ -169,7 +171,8 @@ Then route for review:
                 workflow_type=workflow_type,
                 assignee=assignee,
                 assigned_by=user,
-                task_id=task_id
+                task_id=task_id,
+                doc_type=doc_type
             )
 
         task_path.write_text(task_content, encoding="utf-8")

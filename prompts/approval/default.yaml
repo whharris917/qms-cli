@@ -1,0 +1,16 @@
+# Default approval prompt configuration
+# Used as fallback for any approval workflow type
+
+checklist:
+  - category: Pre-Approval
+    items:
+      - text: "Frontmatter complete (title, revision_summary with CR ID if v1.0+)"
+      - text: "All review findings from previous cycle addressed"
+      - text: "No new deficiencies introduced since review"
+      - text: "Document is 100% compliant with all requirements"
+
+critical_reminders:
+  - "An incorrectly approved document creates **nonconformance**"
+  - "A rejected document creates a **correction cycle** (much lower cost)"
+  - "**Rejection is always the safer choice**"
+  - "You are the final gatekeeper - if you miss something, it becomes effective"

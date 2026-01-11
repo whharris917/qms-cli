@@ -5,10 +5,14 @@ Configurable prompt generation for review and approval tasks.
 Allows customization per document type and workflow phase.
 
 Created as part of CR-026: QMS CLI Extensibility Refactoring
+Updated in CR-027: Extract prompts to external YAML files
 """
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, List, Dict, Tuple, Callable
+
+import yaml
 
 
 def today() -> str:
@@ -46,7 +50,134 @@ class PromptConfig:
 
 
 # =============================================================================
-# Default Checklist Items
+# YAML File Loading (CR-027)
+# =============================================================================
+
+# Directory containing prompt YAML files
+PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+
+def load_config_from_yaml(file_path: Path) -> Optional[PromptConfig]:
+    """
+    Load a PromptConfig from a YAML file.
+
+    Args:
+        file_path: Path to the YAML file
+
+    Returns:
+        PromptConfig if file exists and is valid, None otherwise
+    """
+    if not file_path.exists():
+        return None
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+
+        if not data:
+            return None
+
+        # Parse checklist items
+        checklist_items = []
+        for category_data in data.get('checklist', []):
+            category = category_data.get('category', '')
+            for item_data in category_data.get('items', []):
+                if isinstance(item_data, str):
+                    # Simple string item
+                    checklist_items.append(ChecklistItem(
+                        category=category,
+                        item=item_data,
+                        evidence_prompt=""
+                    ))
+                elif isinstance(item_data, dict):
+                    # Dict with text and optional evidence_prompt
+                    checklist_items.append(ChecklistItem(
+                        category=category,
+                        item=item_data.get('text', ''),
+                        evidence_prompt=item_data.get('evidence_prompt', '')
+                    ))
+
+        # Parse critical reminders
+        critical_reminders = data.get('critical_reminders', [])
+
+        # Parse additional sections
+        additional_sections = []
+        for section in data.get('additional_sections', []):
+            if isinstance(section, dict):
+                title = section.get('title', '')
+                content = section.get('content', '')
+                additional_sections.append((title, content))
+
+        return PromptConfig(
+            checklist_items=checklist_items,
+            critical_reminders=critical_reminders,
+            additional_sections=additional_sections,
+            response_format=data.get('response_format'),
+            custom_header=data.get('custom_header'),
+            custom_footer=data.get('custom_footer'),
+        )
+
+    except (yaml.YAMLError, IOError):
+        return None
+
+
+def get_prompt_file_path(
+    task_type: str,
+    workflow_type: str,
+    doc_type: str
+) -> Optional[Path]:
+    """
+    Find the appropriate prompt file using fallback chain.
+
+    Fallback order:
+    1. {task_type}/{workflow_type}/{doc_type}.yaml (exact match)
+    2. {task_type}/{workflow_type}/default.yaml (workflow default)
+    3. {task_type}/default.yaml (task type default)
+
+    Args:
+        task_type: "review" or "approval"
+        workflow_type: e.g., "pre_review", "post_review", "review"
+        doc_type: e.g., "cr", "sop", "inv"
+
+    Returns:
+        Path to the first matching file, or None if no file found
+    """
+    # Handle None values
+    if not task_type or not workflow_type:
+        return None
+
+    task_type_lower = task_type.lower()
+    workflow_type_lower = workflow_type.lower()
+    doc_type_lower = doc_type.lower() if doc_type else ""
+
+    # Build fallback paths
+    paths_to_try = []
+
+    if doc_type_lower:
+        # Exact match: task_type/workflow_type/doc_type.yaml
+        paths_to_try.append(
+            PROMPTS_DIR / task_type_lower / workflow_type_lower / f"{doc_type_lower}.yaml"
+        )
+
+    # Workflow default: task_type/workflow_type/default.yaml
+    paths_to_try.append(
+        PROMPTS_DIR / task_type_lower / workflow_type_lower / "default.yaml"
+    )
+
+    # Task type default: task_type/default.yaml
+    paths_to_try.append(
+        PROMPTS_DIR / task_type_lower / "default.yaml"
+    )
+
+    for path in paths_to_try:
+        if path.exists():
+            return path
+
+    return None
+
+
+# =============================================================================
+# Default Checklist Items (Legacy - used as fallback if no YAML files exist)
 # =============================================================================
 
 DEFAULT_FRONTMATTER_CHECKS = [
@@ -268,7 +399,15 @@ class PromptRegistry:
         """
         Get the most specific configuration for the given context.
 
-        Falls back through specificity levels:
+        First tries to load from YAML files (CR-027), then falls back to
+        in-memory registry (legacy).
+
+        File-based fallback order:
+        1. {task_type}/{workflow_type}/{doc_type}.yaml (exact match)
+        2. {task_type}/{workflow_type}/default.yaml (workflow default)
+        3. {task_type}/default.yaml (task type default)
+
+        In-memory fallback order (if no files found):
         1. (task_type, workflow_type, doc_type) - exact match
         2. (task_type, workflow_type, None) - any doc type
         3. (task_type, None, doc_type) - any workflow
@@ -278,7 +417,14 @@ class PromptRegistry:
         Returns:
             The most specific PromptConfig found
         """
-        # Try from most specific to least specific
+        # First try file-based lookup (CR-027)
+        file_path = get_prompt_file_path(task_type, workflow_type, doc_type)
+        if file_path:
+            config = load_config_from_yaml(file_path)
+            if config:
+                return config
+
+        # Fall back to in-memory registry (legacy)
         lookup_order = [
             (task_type, workflow_type, doc_type),
             (task_type, workflow_type, None),

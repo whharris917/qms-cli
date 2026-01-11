@@ -133,6 +133,7 @@ Check the document status: qms --user {user} status {doc_id}
             task_path = inbox_path / f"{task_id}.md"
 
             # Generate enhanced task content
+            # CR-027: Pass doc_type for prompt customization
             if task_type == "REVIEW":
                 task_content = generate_review_task_content(
                     doc_id=doc_id,
@@ -140,7 +141,8 @@ Check the document status: qms --user {user} status {doc_id}
                     workflow_type=workflow_type,
                     assignee=new_user,
                     assigned_by=user,
-                    task_id=task_id
+                    task_id=task_id,
+                    doc_type=doc_type
                 )
             else:
                 task_content = generate_approval_task_content(
@@ -149,7 +151,8 @@ Check the document status: qms --user {user} status {doc_id}
                     workflow_type=workflow_type,
                     assignee=new_user,
                     assigned_by=user,
-                    task_id=task_id
+                    task_id=task_id,
+                    doc_type=doc_type
                 )
 
             task_path.write_text(task_content, encoding="utf-8")

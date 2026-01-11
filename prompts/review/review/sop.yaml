@@ -1,0 +1,39 @@
+# SOP-specific review prompt
+# Workflow: REVIEW (non-executable)
+# Doc type: SOP
+
+checklist:
+  - category: Frontmatter
+    items:
+      - text: "`title:` field present and non-empty"
+        evidence_prompt: "quote actual value"
+      - text: "`revision_summary:` present (required for v1.0+)"
+        evidence_prompt: "quote actual value or N/A"
+      - text: "`revision_summary:` begins with CR ID (e.g., \"CR-XXX:\")"
+        evidence_prompt: "quote CR ID or N/A"
+
+  - category: Document Structure
+    items:
+      - text: "Document follows type-specific template"
+      - text: "All required sections present"
+      - text: "Section numbering sequential and correct"
+
+  - category: Content Integrity
+    items:
+      - text: "No placeholder text (TBD, TODO, XXX, FIXME)"
+      - text: "No obvious factual errors or contradictions"
+      - text: "References to other documents are valid"
+      - text: "No typos or grammatical errors"
+      - text: "Formatting consistent throughout"
+
+  - category: Procedure Content
+    items:
+      - text: "Responsibilities section defines all roles"
+      - text: "Procedure steps are numbered and unambiguous"
+      - text: "References section lists all dependencies"
+
+critical_reminders:
+  - "**Compliance is BINARY**: Document is either compliant or non-compliant"
+  - "**ONE FAILED ITEM = REJECT**: No exceptions, no \"minor issues\""
+  - "**VERIFY WITH EVIDENCE**: Quote actual values, do not assume"
+  - "**REJECTION IS CORRECT**: A rejected document prevents nonconformance"
