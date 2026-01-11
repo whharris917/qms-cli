@@ -3,6 +3,9 @@ QMS CLI Template Module
 
 Contains functions for template loading, task content generation,
 and document scaffolding.
+
+Note: Task content generation now delegates to the PromptRegistry
+for configurable prompts per doc_type and workflow_type.
 """
 import re
 from datetime import datetime
@@ -11,6 +14,7 @@ from typing import Dict, Any, Tuple
 import yaml
 
 from qms_paths import QMS_ROOT
+from prompts import get_prompt_registry
 
 
 # =============================================================================
@@ -24,6 +28,7 @@ def today() -> str:
 
 # =============================================================================
 # Review Task Content Generation (CR-012: QA Review Safeguards)
+# Now uses PromptRegistry for configurable prompts (CR-026)
 # =============================================================================
 
 def generate_review_task_content(
@@ -32,121 +37,34 @@ def generate_review_task_content(
     workflow_type: str,
     assignee: str,
     assigned_by: str,
-    task_id: str
+    task_id: str,
+    doc_type: str = ""
 ) -> str:
-    """Generate enhanced review task content with mandatory checklist."""
-    return f"""---
-task_id: {task_id}
-task_type: REVIEW
-workflow_type: {workflow_type}
-doc_id: {doc_id}
-assigned_by: {assigned_by}
-assigned_date: {today()}
-version: {version}
----
+    """
+    Generate enhanced review task content with mandatory checklist.
 
-# REVIEW REQUEST: {doc_id}
+    Args:
+        doc_id: Document ID (e.g., "CR-026")
+        version: Document version
+        workflow_type: Workflow type (e.g., "PRE_REVIEW", "POST_REVIEW")
+        assignee: User assigned to review
+        assigned_by: User who assigned the review
+        task_id: Task identifier
+        doc_type: Document type for prompt customization (CR-026)
 
-**Workflow:** {workflow_type}
-**Version:** {version}
-**Assigned By:** {assigned_by}
-**Date:** {today()}
-
----
-
-## MANDATORY VERIFICATION CHECKLIST
-
-**YOU MUST verify each item below. ANY failure = REJECT.**
-
-Before submitting your review, complete this checklist:
-
-### Frontmatter Verification
-
-| Item | Status | Evidence (quote actual value) |
-|------|--------|-------------------------------|
-| `title:` field present and non-empty | PASS / FAIL | |
-| `revision_summary:` present (required for v1.0+) | PASS / FAIL / N/A | |
-| `revision_summary:` begins with CR ID (e.g., "CR-XXX:") | PASS / FAIL / N/A | |
-
-### Document Structure
-
-| Item | Status | Evidence |
-|------|--------|----------|
-| Document follows type-specific template | PASS / FAIL | |
-| All required sections present | PASS / FAIL | |
-| Section numbering sequential and correct | PASS / FAIL | |
-
-### Content Integrity
-
-| Item | Status | Evidence |
-|------|--------|----------|
-| No placeholder text (TBD, TODO, XXX, FIXME) | PASS / FAIL | |
-| No obvious factual errors or contradictions | PASS / FAIL | |
-| References to other documents are valid | PASS / FAIL | |
-| No typos or grammatical errors | PASS / FAIL | |
-| Formatting consistent throughout | PASS / FAIL | |
-
----
-
-## STRUCTURED REVIEW RESPONSE FORMAT
-
-Your review comment MUST follow this format:
-
-```
-## {assignee} Review: {doc_id}
-
-### Checklist Verification
-
-| Item | Status | Evidence |
-|------|--------|----------|
-| Frontmatter: title present | PASS/FAIL | "[quoted value]" or "MISSING" |
-| Frontmatter: revision_summary present | PASS/FAIL/N/A | "[quoted value]" or "N/A for v0.x" |
-| Frontmatter: CR ID in revision_summary | PASS/FAIL/N/A | "[CR-XXX]" or "N/A" |
-| Template compliance | PASS/FAIL | [note deviation if any] |
-| Required sections present | PASS/FAIL | [list sections] |
-| No placeholder content | PASS/FAIL | "None found" or "[quoted]" |
-| No typos/errors | PASS/FAIL | "None found" or "[list]" |
-| Formatting consistent | PASS/FAIL | [note inconsistency if any] |
-
-### Findings
-
-[List ALL findings. Every finding is a deficiency.]
-
-1. [Finding or "No findings"]
-
-### Recommendation
-
-[RECOMMEND / REQUEST UPDATES] - [Brief rationale]
-```
-
----
-
-## CRITICAL REMINDERS
-
-- **Compliance is BINARY**: Document is either compliant or non-compliant
-- **ONE FAILED ITEM = REJECT**: No exceptions, no "minor issues"
-- **VERIFY WITH EVIDENCE**: Quote actual values, do not assume
-- **REJECTION IS CORRECT**: A rejected document prevents nonconformance
-
-**There is no "approve with comments." There is no severity classification.**
-**If ANY deficiency exists, the only valid outcome is REQUEST UPDATES.**
-
----
-
-## Commands
-
-Submit your review:
-
-**If ALL items PASS:**
-```
-/qms --user {assignee} review {doc_id} --recommend --comment "[your structured review]"
-```
-
-**If ANY item FAILS:**
-```
-/qms --user {assignee} review {doc_id} --request-updates --comment "[your structured review with findings]"
-```
-"""
+    Returns:
+        Formatted task content string
+    """
+    registry = get_prompt_registry()
+    return registry.generate_review_content(
+        doc_id=doc_id,
+        version=version,
+        workflow_type=workflow_type,
+        assignee=assignee,
+        assigned_by=assigned_by,
+        task_id=task_id,
+        doc_type=doc_type
+    )
 
 
 def generate_approval_task_content(
@@ -155,68 +73,34 @@ def generate_approval_task_content(
     workflow_type: str,
     assignee: str,
     assigned_by: str,
-    task_id: str
+    task_id: str,
+    doc_type: str = ""
 ) -> str:
-    """Generate enhanced approval task content with final verification."""
-    return f"""---
-task_id: {task_id}
-task_type: APPROVAL
-workflow_type: {workflow_type}
-doc_id: {doc_id}
-assigned_by: {assigned_by}
-assigned_date: {today()}
-version: {version}
----
+    """
+    Generate enhanced approval task content with final verification.
 
-# APPROVAL REQUEST: {doc_id}
+    Args:
+        doc_id: Document ID (e.g., "CR-026")
+        version: Document version
+        workflow_type: Workflow type (e.g., "PRE_APPROVAL", "POST_APPROVAL")
+        assignee: User assigned to approve
+        assigned_by: User who assigned the approval
+        task_id: Task identifier
+        doc_type: Document type for prompt customization (CR-026)
 
-**Workflow:** {workflow_type}
-**Version:** {version}
-**Assigned By:** {assigned_by}
-**Date:** {today()}
-
----
-
-## FINAL VERIFICATION - YOU ARE THE LAST LINE OF DEFENSE
-
-Before approving, you MUST confirm:
-
-### Pre-Approval Checklist
-
-| Item | Verified |
-|------|----------|
-| Frontmatter complete (title, revision_summary with CR ID if v1.0+) | YES / NO |
-| All review findings from previous cycle addressed | YES / NO |
-| No new deficiencies introduced since review | YES / NO |
-| Document is 100% compliant with all requirements | YES / NO |
-
-**If ANY item is NO: REJECT**
-
----
-
-## CRITICAL REMINDERS
-
-- An incorrectly approved document creates **nonconformance**
-- A rejected document creates a **correction cycle** (much lower cost)
-- **Rejection is always the safer choice**
-- You are the final gatekeeper - if you miss something, it becomes effective
-
-**IF ANY DOUBT EXISTS: REJECT**
-
----
-
-## Commands
-
-**Approve (only if 100% compliant):**
-```
-/qms --user {assignee} approve {doc_id}
-```
-
-**Reject (if any deficiency):**
-```
-/qms --user {assignee} reject {doc_id} --comment "[reason for rejection]"
-```
-"""
+    Returns:
+        Formatted task content string
+    """
+    registry = get_prompt_registry()
+    return registry.generate_approval_content(
+        doc_id=doc_id,
+        version=version,
+        workflow_type=workflow_type,
+        assignee=assignee,
+        assigned_by=assigned_by,
+        task_id=task_id,
+        doc_type=doc_type
+    )
 
 
 # =============================================================================

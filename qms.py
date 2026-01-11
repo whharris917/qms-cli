@@ -11,6 +11,12 @@ Usage:
 Commands:
     create, read, checkout, checkin, route, review, approve, reject,
     release, revert, close, status, inbox, workspace
+
+Architecture (CR-026):
+    Each command is defined in its own file under commands/ and self-registers
+    via the CommandRegistry decorator. This module uses the registry for
+    command discovery and dispatch while maintaining manual argparse definitions
+    for complex argument configurations.
 """
 
 import argparse
@@ -30,14 +36,9 @@ from qms_auth import (
     get_user_group, check_permission, verify_user_identity, verify_folder_access
 )
 
-# Import command implementations from qms_commands
-from qms_commands import (
-    cmd_create, cmd_read, cmd_checkout, cmd_checkin,
-    cmd_route, cmd_assign, cmd_review, cmd_approve, cmd_reject,
-    cmd_release, cmd_revert, cmd_close, cmd_status,
-    cmd_inbox, cmd_workspace, cmd_fix, cmd_cancel,
-    cmd_history, cmd_comments, cmd_migrate, cmd_verify_migration
-)
+# Import registry and commands package to trigger registration
+from registry import CommandRegistry
+import commands  # noqa: F401 - import triggers registration
 
 
 # =============================================================================
@@ -175,31 +176,10 @@ Valid users:
         parser.print_help()
         return 1
 
-    commands = {
-        "create": cmd_create,
-        "read": cmd_read,
-        "checkout": cmd_checkout,
-        "checkin": cmd_checkin,
-        "route": cmd_route,
-        "assign": cmd_assign,
-        "review": cmd_review,
-        "approve": cmd_approve,
-        "reject": cmd_reject,
-        "release": cmd_release,
-        "revert": cmd_revert,
-        "close": cmd_close,
-        "status": cmd_status,
-        "inbox": cmd_inbox,
-        "workspace": cmd_workspace,
-        "fix": cmd_fix,
-        "cancel": cmd_cancel,
-        "history": cmd_history,
-        "comments": cmd_comments,
-        "migrate": cmd_migrate,
-        "verify-migration": cmd_verify_migration,
-    }
-
-    return commands[args.command](args)
+    # Use CommandRegistry for command dispatch (CR-026)
+    # This enables single-file command changes while maintaining
+    # the manual argparse definitions above for complex configurations
+    return CommandRegistry.execute(args)
 
 
 if __name__ == "__main__":
