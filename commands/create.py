@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
 from qms_config import DOCUMENT_TYPES
-from qms_paths import PROJECT_ROOT, QMS_ROOT, get_doc_path, get_workspace_path, get_next_number
+from qms_paths import PROJECT_ROOT, QMS_ROOT, get_doc_path, get_workspace_path, get_next_number, get_next_nested_number, get_doc_type
 from qms_io import write_document_minimal
 from qms_auth import get_current_user, check_permission, verify_user_identity
 from qms_templates import load_template_for_type
@@ -28,6 +28,7 @@ from qms_audit import log_create
     arguments=[
         {"flags": ["type"], "help": "Document type (SOP, CR, INV, etc.)"},
         {"flags": ["--title"], "help": "Document title"},
+        {"flags": ["--parent"], "help": "Parent document ID (required for VAR type)"},
     ],
 )
 def cmd_create(args) -> int:
@@ -52,9 +53,32 @@ def cmd_create(args) -> int:
 
     config = DOCUMENT_TYPES[doc_type]
 
+    # Handle parent document requirement for VAR type
+    parent_id = getattr(args, 'parent', None)
+    if doc_type == "VAR":
+        if not parent_id:
+            print("Error: VAR documents require --parent flag")
+            print("Usage: qms create VAR --parent CR-028 --title \"...\"")
+            return 1
+        # Validate parent exists
+        try:
+            parent_type = get_doc_type(parent_id)
+            parent_path = get_doc_path(parent_id)
+            parent_draft = get_doc_path(parent_id, draft=True)
+            if not parent_path.exists() and not parent_draft.exists():
+                print(f"Error: Parent document {parent_id} does not exist")
+                return 1
+        except ValueError as e:
+            print(f"Error: {e}")
+            return 1
+
     # Generate doc_id
     if config.get("singleton"):
         doc_id = config["prefix"]
+    elif doc_type == "VAR" and parent_id:
+        # Nested document: CR-028-VAR-001
+        next_num = get_next_nested_number(parent_id, "VAR")
+        doc_id = f"{parent_id}-VAR-{next_num:03d}"
     else:
         next_num = get_next_number(doc_type)
         doc_id = f"{config['prefix']}-{next_num:03d}"

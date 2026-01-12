@@ -10,13 +10,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 # Valid document types
-DOC_TYPES = {"SOP", "CR", "INV", "CAPA", "TP", "ER", "RS", "DS", "CS", "RTM", "OQ", "TEMPLATE"}
+DOC_TYPES = {"SOP", "CR", "INV", "CAPA", "TP", "ER", "VAR", "RS", "DS", "CS", "RTM", "OQ", "QMS-RS", "QMS-RTM", "TEMPLATE"}
 
 # Document types that use folder-per-doc structure
-FOLDER_DOC_TYPES = {"CR", "INV", "CAPA", "TP", "ER"}
+FOLDER_DOC_TYPES = {"CR", "INV", "CAPA", "TP", "ER", "VAR"}
 
 # Executable document types
-EXECUTABLE_TYPES = {"CR", "INV", "CAPA", "TP", "ER"}
+EXECUTABLE_TYPES = {"CR", "INV", "CAPA", "TP", "ER", "VAR"}
 
 # Valid statuses for non-executable documents
 NON_EXECUTABLE_STATUSES = {
@@ -44,12 +44,16 @@ DOC_ID_PATTERNS = {
     "CAPA": re.compile(r"^CAPA-\d{3}$"),
     "TP": re.compile(r"^TP-\d{3}$"),
     "ER": re.compile(r"^ER-\d{3}$"),
+    "VAR": re.compile(r"^(?:CR|INV)-\d{3}-VAR-\d{3}$"),
     # Singleton types (SDLC documents)
     "RS": re.compile(r"^SDLC-FLOW-RS$"),
     "DS": re.compile(r"^SDLC-FLOW-DS$"),
     "CS": re.compile(r"^SDLC-FLOW-CS$"),
     "RTM": re.compile(r"^SDLC-FLOW-RTM$"),
     "OQ": re.compile(r"^SDLC-FLOW-OQ$"),
+    # SDLC-QMS document types
+    "QMS-RS": re.compile(r"^SDLC-QMS-RS$"),
+    "QMS-RTM": re.compile(r"^SDLC-QMS-RTM$"),
     # Named document types (name-based rather than numbered)
     "TEMPLATE": re.compile(r"^TEMPLATE-[A-Z]+$"),
 }

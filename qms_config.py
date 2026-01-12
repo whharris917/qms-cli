@@ -82,11 +82,15 @@ DOCUMENT_TYPES = {
     "CAPA": {"path": "INV", "executable": True, "prefix": "CAPA", "parent_type": "INV"},
     "TP": {"path": "CR", "executable": True, "prefix": "TP", "parent_type": "CR"},
     "ER": {"path": "CR", "executable": True, "prefix": "ER", "parent_type": "TP"},
+    "VAR": {"path": "CR", "executable": True, "prefix": "VAR"},
     "RS": {"path": "SDLC-FLOW", "executable": False, "prefix": "SDLC-FLOW-RS", "singleton": True},
     "DS": {"path": "SDLC-FLOW", "executable": False, "prefix": "SDLC-FLOW-DS", "singleton": True},
     "CS": {"path": "SDLC-FLOW", "executable": False, "prefix": "SDLC-FLOW-CS", "singleton": True},
     "RTM": {"path": "SDLC-FLOW", "executable": False, "prefix": "SDLC-FLOW-RTM", "singleton": True},
     "OQ": {"path": "SDLC-FLOW", "executable": False, "prefix": "SDLC-FLOW-OQ", "singleton": True},
+    # SDLC-QMS document types (QMS CLI qualification)
+    "QMS-RS": {"path": "SDLC-QMS", "executable": False, "prefix": "SDLC-QMS-RS", "singleton": True},
+    "QMS-RTM": {"path": "SDLC-QMS", "executable": False, "prefix": "SDLC-QMS-RTM", "singleton": True},
     # Named document types (name-based rather than numbered)
     "TEMPLATE": {"path": "TEMPLATE", "executable": False, "prefix": "TEMPLATE"},
 }

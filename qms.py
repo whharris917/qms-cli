@@ -76,6 +76,7 @@ Valid users:
     p_create = subparsers.add_parser("create", help="Create a new document")
     p_create.add_argument("type", help="Document type (SOP, CR, INV, RS, DS, etc.)")
     p_create.add_argument("--title", help="Document title")
+    p_create.add_argument("--parent", help="Parent document ID (required for VAR type)")
 
     # read
     p_read = subparsers.add_parser("read", help="Read a document")

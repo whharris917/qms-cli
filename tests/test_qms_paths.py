@@ -38,10 +38,21 @@ class TestGetDocType:
         """TP (Test Protocol) documents should return 'TP' type."""
         assert qms_module.get_doc_type("CR-001-TP") == "TP"
 
-    def test_sdlc_types(self, qms_module):
-        """SDLC document types should be correctly identified."""
+    def test_var_type(self, qms_module):
+        """VAR (Variance Report) documents should return 'VAR' type."""
+        assert qms_module.get_doc_type("CR-028-VAR-001") == "VAR"
+        assert qms_module.get_doc_type("INV-001-VAR-001") == "VAR"
+        assert qms_module.get_doc_type("CR-001-VAR-123") == "VAR"
+
+    def test_sdlc_flow_types(self, qms_module):
+        """SDLC-FLOW document types should be correctly identified."""
         assert qms_module.get_doc_type("SDLC-FLOW-RS") == "RS"
         assert qms_module.get_doc_type("SDLC-FLOW-RTM") == "RTM"
+
+    def test_sdlc_qms_types(self, qms_module):
+        """SDLC-QMS document types should be correctly identified."""
+        assert qms_module.get_doc_type("SDLC-QMS-RS") == "QMS-RS"
+        assert qms_module.get_doc_type("SDLC-QMS-RTM") == "QMS-RTM"
 
     def test_template_type(self, qms_module):
         """Template documents should return 'TEMPLATE' type."""
@@ -94,6 +105,14 @@ class TestGetDocPath:
         assert path.name == "INV-001-CAPA-001.md"
         # CAPA is in INV directory (not in subfolder per current implementation)
         assert "INV" in path.parts
+
+    def test_var_path(self, qms_module):
+        """VAR documents should be in parent CR's folder."""
+        path = qms_module.get_doc_path("CR-028-VAR-001")
+        assert path.name == "CR-028-VAR-001.md"
+        # VAR is in parent CR's folder
+        assert "CR" in path.parts
+        assert "CR-028" in path.parts
 
 
 class TestGetArchivePath:

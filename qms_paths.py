@@ -42,6 +42,10 @@ USERS_ROOT = PROJECT_ROOT / ".claude" / "users"
 
 def get_doc_type(doc_id: str) -> str:
     """Determine document type from doc_id."""
+    if doc_id.startswith("SDLC-QMS-"):
+        suffix = doc_id.replace("SDLC-QMS-", "")
+        if suffix in ["RS", "RTM"]:
+            return f"QMS-{suffix}"
     if doc_id.startswith("SDLC-FLOW-"):
         suffix = doc_id.replace("SDLC-FLOW-", "")
         if suffix in ["RS", "DS", "CS", "RTM", "OQ"]:
@@ -56,6 +60,8 @@ def get_doc_type(doc_id: str) -> str:
         return "TP"
     if "-CAPA-" in doc_id:
         return "CAPA"
+    if "-VAR-" in doc_id:
+        return "VAR"
     if doc_id.startswith("CR-"):
         return "CR"
     if doc_id.startswith("INV-"):
@@ -74,8 +80,14 @@ def get_doc_path(doc_id: str, draft: bool = False) -> Path:
 
     base_path = QMS_ROOT / config["path"]
 
+    # Handle nested document types that live in parent's folder
+    if doc_type == "VAR":
+        # CR-028-VAR-001 -> CR-028, INV-001-VAR-001 -> INV-001
+        match = re.match(r"((?:CR|INV)-\d+)", doc_id)
+        if match:
+            base_path = base_path / match.group(1)
     # Handle folder-per-doc types (CR, INV)
-    if config.get("folder_per_doc"):
+    elif config.get("folder_per_doc"):
         # Extract the parent folder (e.g., CR-001 from CR-001-TP)
         if doc_type in ["TP", "ER"]:
             # CR-001-TP -> CR-001, CR-001-TP-ER-001 -> CR-001
@@ -141,6 +153,34 @@ def get_next_number(doc_type: str) -> int:
     for item in base_path.iterdir():
         name = item.stem if item.is_file() else item.name
         # Remove -draft suffix if present
+        name = name.replace("-draft", "")
+        match = pattern.match(name)
+        if match:
+            max_num = max(max_num, int(match.group(1)))
+
+    return max_num + 1
+
+
+def get_next_nested_number(parent_id: str, child_type: str) -> int:
+    """Get the next available number for a nested document type (e.g., CR-028-VAR-001)."""
+    parent_type = get_doc_type(parent_id)
+    parent_config = DOCUMENT_TYPES[parent_type]
+
+    # Nested documents live in parent's folder
+    if parent_config.get("folder_per_doc"):
+        base_path = QMS_ROOT / parent_config["path"] / parent_id
+    else:
+        base_path = QMS_ROOT / parent_config["path"]
+
+    if not base_path.exists():
+        return 1
+
+    # Pattern: {parent_id}-{child_type}-NNN
+    pattern = re.compile(rf"^{re.escape(parent_id)}-{child_type}-(\d+)")
+    max_num = 0
+
+    for item in base_path.iterdir():
+        name = item.stem if item.is_file() else item.name
         name = name.replace("-draft", "")
         match = pattern.match(name)
         if match:
