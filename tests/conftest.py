@@ -99,12 +99,16 @@ def qms_module(temp_project, monkeypatch):
     import qms_paths
     import qms_io
     import qms_auth
+    import qms_meta
+    import qms_audit
     import qms
 
     # Reload modules in dependency order
     import qms_templates
     import qms_commands
     importlib.reload(qms_paths)
+    importlib.reload(qms_meta)
+    importlib.reload(qms_audit)
     importlib.reload(qms_templates)
     importlib.reload(qms_io)
     importlib.reload(qms_auth)

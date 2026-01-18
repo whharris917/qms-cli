@@ -10,9 +10,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
+from qms_paths import QMS_ROOT
 
-# Base paths
-QMS_ROOT = Path(__file__).parent.parent / "QMS"
 AUDIT_ROOT = QMS_ROOT / ".audit"
 
 
