@@ -4,7 +4,7 @@
 checklist:
   - category: Pre-Approval
     items:
-      - text: "Frontmatter complete (title, revision_summary with CR ID if v1.0+)"
+      - text: "Frontmatter complete (title, revision_summary present and descriptive if v1.0+)"
       - text: "All review findings from previous cycle addressed"
       - text: "No new deficiencies introduced since review"
       - text: "Document is 100% compliant with all requirements"
