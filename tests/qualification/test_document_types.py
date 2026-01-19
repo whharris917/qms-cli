@@ -103,16 +103,11 @@ def test_create_inv(temp_project):
 # Test: Child Document Relationships
 # ============================================================================
 
-@pytest.mark.skip(reason="TP type not fully implemented: --parent enforcement missing for TP")
 def test_create_tp_under_cr(temp_project):
     """
     TP is created as a child of CR, stored within CR's folder.
 
     Verifies: REQ-DOC-002
-
-    Note: Skipped because TP parent enforcement is not implemented. The create
-    command only handles --parent for VAR type. TP would generate "TP-001"
-    instead of "CR-001-TP".
     """
     # Create parent CR first
     run_qms(temp_project, "claude", "create", "CR", "--title", "Parent CR")
@@ -159,16 +154,11 @@ def test_create_var_under_cr(temp_project):
     assert (cr_folder / "CR-001-VAR-002-draft.md").exists(), "Second VAR should be CR-001-VAR-002"
 
 
-@pytest.mark.skip(reason="CLI bug: VAR config path is 'CR', doesn't adapt to parent type")
 def test_create_var_under_inv(temp_project):
     """
     VAR can also be created as a child of INV.
 
     Verifies: REQ-DOC-002
-
-    Note: Skipped because VAR document type has hardcoded path "CR" in config.
-    When creating VAR under INV parent, the file ends up in QMS/CR/INV-001/
-    instead of QMS/INV/INV-001/. The path resolution doesn't adapt to parent type.
     """
     # Create parent INV first (create command auto-creates folder structure)
     result = run_qms(temp_project, "claude", "create", "INV", "--title", "INV for VAR")
@@ -307,16 +297,11 @@ def test_cancel_blocked_for_v1(temp_project):
 # Test: Template Name-Based ID
 # ============================================================================
 
-@pytest.mark.skip(reason="--name argument not implemented for TEMPLATE type")
 def test_template_name_based_id(temp_project):
     """
     Template documents use name-based IDs instead of sequential numbers.
 
     Verifies: REQ-DOC-011
-
-    Note: Skipped because create command doesn't support --name argument.
-    Templates would be created as TEMPLATE-001, TEMPLATE-002 etc. instead
-    of TEMPLATE-CR, TEMPLATE-SOP as specified in requirements.
     """
     # Create template directory structure
     (temp_project / "QMS" / "TEMPLATE").mkdir(parents=True, exist_ok=True)

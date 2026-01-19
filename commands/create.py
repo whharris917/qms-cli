@@ -28,7 +28,8 @@ from qms_audit import log_create
     arguments=[
         {"flags": ["type"], "help": "Document type (SOP, CR, INV, etc.)"},
         {"flags": ["--title"], "help": "Document title"},
-        {"flags": ["--parent"], "help": "Parent document ID (required for VAR type)"},
+        {"flags": ["--parent"], "help": "Parent document ID (required for VAR/TP types)"},
+        {"flags": ["--name"], "help": "Name for TEMPLATE type (e.g., CR, SOP)"},  # CR-032 Gap 5
     ],
 )
 def cmd_create(args) -> int:
@@ -53,16 +54,20 @@ def cmd_create(args) -> int:
 
     config = DOCUMENT_TYPES[doc_type]
 
-    # Handle parent document requirement for VAR type
+    # Handle parent document requirement for VAR and TP types (CR-032 Gap 3)
     parent_id = getattr(args, 'parent', None)
-    if doc_type == "VAR":
+    if doc_type in ("VAR", "TP"):
         if not parent_id:
-            print("Error: VAR documents require --parent flag")
-            print("Usage: qms create VAR --parent CR-028 --title \"...\"")
+            print(f"Error: {doc_type} documents require --parent flag")
+            print(f"Usage: qms create {doc_type} --parent CR-001 --title \"...\"")
             return 1
-        # Validate parent exists
+        # Validate parent exists and is correct type
         try:
             parent_type = get_doc_type(parent_id)
+            # TP must have CR parent
+            if doc_type == "TP" and parent_type != "CR":
+                print("Error: TP documents must have a CR parent")
+                return 1
             parent_path = get_doc_path(parent_id)
             parent_draft = get_doc_path(parent_id, draft=True)
             if not parent_path.exists() and not parent_draft.exists():
@@ -75,10 +80,21 @@ def cmd_create(args) -> int:
     # Generate doc_id
     if config.get("singleton"):
         doc_id = config["prefix"]
+    elif doc_type == "TP" and parent_id:
+        # CR-032 Gap 3: TP has singular ID: CR-001-TP (not CR-001-TP-001)
+        doc_id = f"{parent_id}-TP"
     elif doc_type == "VAR" and parent_id:
         # Nested document: CR-028-VAR-001
         next_num = get_next_nested_number(parent_id, "VAR")
         doc_id = f"{parent_id}-VAR-{next_num:03d}"
+    elif doc_type == "TEMPLATE":
+        # CR-032 Gap 5: TEMPLATE supports name-based IDs
+        name = getattr(args, 'name', None)
+        if name:
+            doc_id = f"TEMPLATE-{name.upper()}"
+        else:
+            next_num = get_next_number(doc_type)
+            doc_id = f"{config['prefix']}-{next_num:03d}"
     else:
         next_num = get_next_number(doc_type)
         doc_id = f"{config['prefix']}-{next_num:03d}"

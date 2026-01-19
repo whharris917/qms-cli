@@ -79,6 +79,13 @@ Then route for review:
 """)
         return 1
 
+    # CR-032 Gap 2: Enforce owner-only routing per REQ-SEC-003
+    owner = meta.get("responsible_user")
+    if owner and owner != user:
+        print(f"Error: Only the document owner can route {doc_id}")
+        print(f"Current owner: {owner}")
+        return 1
+
     current_status = Status(meta.get("status", "DRAFT"))
     is_executable = meta.get("executable", False)
     # CAPA-4: Use execution_phase to determine workflow path (not just current status)

@@ -116,7 +116,7 @@ PERMISSIONS = {
     "create":    {"groups": ["initiators"]},
     "checkout":  {"groups": ["initiators"]},
     "checkin":   {"groups": ["initiators"], "owner_only": True},
-    "route":     {"groups": ["initiators", "qa"]},
+    "route":     {"groups": ["initiators", "qa"], "owner_only": True},  # CR-032
     "assign":    {"groups": ["qa"]},
     "review":    {"groups": ["initiators", "qa", "reviewers"], "assigned_only": True},
     "approve":   {"groups": ["qa", "reviewers"], "assigned_only": True},

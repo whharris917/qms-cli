@@ -82,25 +82,29 @@ def get_doc_path(doc_id: str, draft: bool = False) -> Path:
 
     # Handle nested document types that live in parent's folder
     if doc_type == "VAR":
-        # CR-028-VAR-001 -> CR-028, INV-001-VAR-001 -> INV-001
+        # CR-032 Gap 4: Derive path from parent type, not VAR config
+        # CR-028-VAR-001 -> CR-028 (in CR/), INV-001-VAR-001 -> INV-001 (in INV/)
         match = re.match(r"((?:CR|INV)-\d+)", doc_id)
+        if match:
+            parent_id = match.group(1)
+            parent_type = "CR" if parent_id.startswith("CR-") else "INV"
+            parent_config = DOCUMENT_TYPES[parent_type]
+            base_path = QMS_ROOT / parent_config["path"] / parent_id
+    elif doc_type in ["TP", "ER"]:
+        # CR-032 Gap 3: TP/ER live in parent CR folder
+        # CR-001-TP -> CR-001, CR-001-TP-ER-001 -> CR-001
+        match = re.match(r"(CR-\d+)", doc_id)
+        if match:
+            base_path = base_path / match.group(1)
+    elif doc_type == "CAPA":
+        # CAPA lives in parent INV folder
+        # INV-001-CAPA-001 -> INV-001
+        match = re.match(r"(INV-\d+)", doc_id)
         if match:
             base_path = base_path / match.group(1)
     # Handle folder-per-doc types (CR, INV)
     elif config.get("folder_per_doc"):
-        # Extract the parent folder (e.g., CR-001 from CR-001-TP)
-        if doc_type in ["TP", "ER"]:
-            # CR-001-TP -> CR-001, CR-001-TP-ER-001 -> CR-001
-            match = re.match(r"(CR-\d+)", doc_id)
-            if match:
-                base_path = base_path / match.group(1)
-        elif doc_type == "CAPA":
-            # INV-001-CAPA-001 -> INV-001
-            match = re.match(r"(INV-\d+)", doc_id)
-            if match:
-                base_path = base_path / match.group(1)
-        else:
-            base_path = base_path / doc_id
+        base_path = base_path / doc_id
 
     filename = f"{doc_id}-draft.md" if draft else f"{doc_id}.md"
     return base_path / filename
@@ -113,17 +117,25 @@ def get_archive_path(doc_id: str, version: str) -> Path:
 
     base_path = ARCHIVE_ROOT / config["path"]
 
-    if config.get("folder_per_doc"):
-        if doc_type in ["TP", "ER"]:
-            match = re.match(r"(CR-\d+)", doc_id)
-            if match:
-                base_path = base_path / match.group(1)
-        elif doc_type == "CAPA":
-            match = re.match(r"(INV-\d+)", doc_id)
-            if match:
-                base_path = base_path / match.group(1)
-        else:
-            base_path = base_path / doc_id
+    # CR-032 Gap 4: VAR path derived from parent type
+    if doc_type == "VAR":
+        match = re.match(r"((?:CR|INV)-\d+)", doc_id)
+        if match:
+            parent_id = match.group(1)
+            parent_type = "CR" if parent_id.startswith("CR-") else "INV"
+            parent_config = DOCUMENT_TYPES[parent_type]
+            base_path = ARCHIVE_ROOT / parent_config["path"] / parent_id
+    elif doc_type in ["TP", "ER"]:
+        # CR-032 Gap 3: TP/ER live in parent CR folder
+        match = re.match(r"(CR-\d+)", doc_id)
+        if match:
+            base_path = base_path / match.group(1)
+    elif doc_type == "CAPA":
+        match = re.match(r"(INV-\d+)", doc_id)
+        if match:
+            base_path = base_path / match.group(1)
+    elif config.get("folder_per_doc"):
+        base_path = base_path / doc_id
 
     return base_path / f"{doc_id}-v{version}.md"
 

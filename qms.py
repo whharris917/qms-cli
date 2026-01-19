@@ -76,7 +76,8 @@ Valid users:
     p_create = subparsers.add_parser("create", help="Create a new document")
     p_create.add_argument("type", help="Document type (SOP, CR, INV, RS, DS, etc.)")
     p_create.add_argument("--title", help="Document title")
-    p_create.add_argument("--parent", help="Parent document ID (required for VAR type)")
+    p_create.add_argument("--parent", help="Parent document ID (required for VAR/TP types)")
+    p_create.add_argument("--name", help="Name for TEMPLATE type (e.g., CR, SOP)")  # CR-032
 
     # read
     p_read = subparsers.add_parser("read", help="Read a document")

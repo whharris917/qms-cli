@@ -14,9 +14,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
-from qms_paths import get_doc_path
+from qms_paths import get_doc_path, get_doc_type
 from qms_io import read_document, write_document
 from qms_auth import get_current_user
+from qms_meta import read_meta
 
 
 @CommandRegistry.register(
@@ -40,8 +41,12 @@ def cmd_fix(args) -> int:
         print(f"Error: Document not found: {doc_id}", file=sys.stderr)
         return 1
 
+    # Read status from .meta (authoritative source) - CR-032 Gap 1 fix
+    doc_type = get_doc_type(doc_id)
+    meta = read_meta(doc_id, doc_type)
+    status = meta.get("status", "") if meta else ""
+
     frontmatter, body = read_document(doc_path)
-    status = frontmatter.get("status", "")
 
     if status not in ("EFFECTIVE", "CLOSED"):
         print(f"Error: Fix only applies to EFFECTIVE/CLOSED documents (current: {status})", file=sys.stderr)

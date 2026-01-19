@@ -104,16 +104,11 @@ def test_unauthorized_assign(temp_project):
     assert result.returncode != 0, "Reviewer tu_ui should not be able to assign"
 
 
-@pytest.mark.skip(reason="CLI bug: fix command reads status from frontmatter instead of .meta")
 def test_fix_authorization(temp_project):
     """
     Only QA and lead can use the fix command.
 
     Verifies: REQ-SEC-002
-
-    Note: Skipped due to CLI bug - fix command reads status from frontmatter
-    but QMS uses .meta as authoritative source. The frontmatter status field
-    is not updated during approval workflow.
     """
     # Setup: Create an effective document
     run_qms(temp_project, "claude", "create", "SOP", "--title", "Test Fix")
@@ -165,16 +160,11 @@ def test_owner_only_checkin(temp_project):
     assert result.returncode == 0, "Owner should be able to checkin"
 
 
-@pytest.mark.skip(reason="RS gap: owner-only routing not enforced in code (REQ-SEC-003)")
 def test_owner_only_route(temp_project):
     """
     Only the document owner can route for review/approval.
 
     Verifies: REQ-SEC-003
-
-    Note: Skipped because current implementation allows any initiator to route
-    any document. REQ-SEC-003 specifies owner-only enforcement but code only
-    checks group membership, not document ownership.
     """
     # Create and checkin as claude
     run_qms(temp_project, "claude", "create", "SOP", "--title", "Route Test")
