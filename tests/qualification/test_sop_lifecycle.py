@@ -441,5 +441,128 @@ def test_retirement_rejected_for_v0(temp_project):
 
     # [REQ-WF-012] Attempt retirement routing at v0.1 - should fail
     result = run_qms(temp_project, "claude", "route", "SOP-001", "--approval", "--retire")
-    # This should be rejected because version < 1.0
-    # Note: Test depends on CLI implementation of this check
+    assert result.returncode != 0, "Retirement routing should be rejected for v0.x documents"
+
+
+# ============================================================================
+# Test: Approval Gate - Quality Review Required
+# ============================================================================
+
+def test_approval_gate_requires_quality_review(temp_project):
+    """
+    Approval routing requires at least one quality group member review.
+
+    Verifies: REQ-WF-005
+    """
+    # Create SOP and route for review with only non-quality reviewer
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Quality Gate Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review", "--assign", "lead")
+
+    # Only lead (administrator, not quality) reviews
+    run_qms(temp_project, "lead", "review", "SOP-001", "--recommend", "--comment", "Lead OK")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "REVIEWED"
+
+    # [REQ-WF-005] Attempt to route for approval without quality review
+    result = run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+    assert result.returncode != 0, "Approval routing should require quality review"
+    assert "quality" in result.stderr.lower() or "quality" in result.stdout.lower(), \
+        "Error should mention quality review requirement"
+
+
+# ============================================================================
+# Test: Checked-in Requirement for Routing
+# ============================================================================
+
+def test_routing_requires_checkin(temp_project):
+    """
+    Routing for review/approval requires document to be checked in.
+
+    Verifies: REQ-WF-015
+    """
+    # Create document (auto-checks out)
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Routing Checkin Test")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["checked_out"] == True
+
+    # [REQ-WF-015] Attempt to route while checked out - should fail
+    result = run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    assert result.returncode != 0, "Routing should fail while document is checked out"
+
+    # Checkin and retry
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    result = run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    assert result.returncode == 0, "Routing should succeed after checkin"
+
+
+# ============================================================================
+# Test: Task Removal on Rejection
+# ============================================================================
+
+def test_rejection_clears_approval_tasks(temp_project):
+    """
+    Rejection during approval clears all pending approval tasks.
+
+    Verifies: REQ-TASK-004
+    """
+    # Create SOP and get to IN_APPROVAL with multiple approvers
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Rejection Task Clear Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    run_qms(temp_project, "qa", "review", "SOP-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+
+    # Assign additional approver
+    run_qms(temp_project, "qa", "assign", "SOP-001", "--assignees", "tu_ui")
+
+    # Verify both have tasks
+    result_qa = run_qms(temp_project, "qa", "inbox")
+    result_tu = run_qms(temp_project, "tu_ui", "inbox")
+    assert "SOP-001" in result_qa.stdout, "qa should have approval task"
+    assert "SOP-001" in result_tu.stdout, "tu_ui should have approval task"
+
+    # [REQ-TASK-004] QA rejects - should clear ALL approval tasks
+    run_qms(temp_project, "qa", "reject", "SOP-001", "--comment", "Needs rework")
+
+    # Verify all approval tasks cleared
+    result_qa = run_qms(temp_project, "qa", "inbox")
+    result_tu = run_qms(temp_project, "tu_ui", "inbox")
+    assert "SOP-001" not in result_qa.stdout, "qa approval task should be cleared"
+    assert "SOP-001" not in result_tu.stdout, "tu_ui approval task should be cleared"
+
+
+# ============================================================================
+# Test: Assign Command
+# ============================================================================
+
+def test_assign_command(temp_project):
+    """
+    Quality group members can add reviewers/approvers after initial routing.
+
+    Verifies: REQ-TASK-005
+    """
+    # Create and route for review
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Assign Command Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    initial_assignees = set(meta["pending_assignees"])
+
+    # [REQ-TASK-005] QA assigns additional reviewers
+    result = run_qms(temp_project, "qa", "assign", "SOP-001", "--assignees", "tu_ui", "tu_scene")
+    assert result.returncode == 0, f"Assign command failed: {result.stderr}"
+
+    # Verify assignees added
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert "tu_ui" in meta["pending_assignees"]
+    assert "tu_scene" in meta["pending_assignees"]
+
+    # Verify tasks created in their inboxes
+    result_tu_ui = run_qms(temp_project, "tu_ui", "inbox")
+    result_tu_scene = run_qms(temp_project, "tu_scene", "inbox")
+    assert "SOP-001" in result_tu_ui.stdout, "tu_ui should have review task"
+    assert "SOP-001" in result_tu_scene.stdout, "tu_scene should have review task"

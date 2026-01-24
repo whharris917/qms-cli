@@ -355,3 +355,135 @@ def test_sdlc_document_types(temp_project):
     assert result.returncode == 0, f"Create QMS-RTM failed: {result.stderr}"
 
     assert (temp_project / "QMS" / "SDLC-QMS" / "SDLC-QMS-RTM-draft.md").exists()
+
+
+# ============================================================================
+# Test: SDLC Namespace Registration
+# ============================================================================
+
+def test_sdlc_namespace_registration(temp_project):
+    """
+    SDLC namespaces can be registered via namespace add command.
+
+    Verifies: REQ-DOC-014
+    """
+    # [REQ-DOC-014] Register a new namespace
+    result = run_qms(temp_project, "claude", "namespace", "add", "MYPROJ")
+    assert result.returncode == 0, f"Namespace add failed: {result.stderr}"
+
+    # Verify directory structure created
+    assert (temp_project / "QMS" / "SDLC-MYPROJ").exists(), "SDLC-MYPROJ directory should be created"
+
+    # Verify namespace is persisted in configuration
+    config_path = temp_project / "QMS" / ".meta" / "sdlc_namespaces.json"
+    assert config_path.exists(), "Namespace configuration should be persisted"
+
+    import json
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert "MYPROJ" in config, "MYPROJ namespace should be in persisted config"
+
+    # Verify namespace appears in list
+    result = run_qms(temp_project, "claude", "namespace", "list")
+    assert "MYPROJ" in result.stdout, "Newly registered namespace should appear in list"
+
+
+def test_sdlc_namespace_list(temp_project):
+    """
+    SDLC namespaces can be listed via namespace list command.
+
+    Verifies: REQ-DOC-014
+    """
+    # [REQ-DOC-014] List namespaces - should show built-in namespaces
+    result = run_qms(temp_project, "claude", "namespace", "list")
+    assert result.returncode == 0, f"Namespace list failed: {result.stderr}"
+
+    # Verify built-in namespaces appear
+    assert "QMS" in result.stdout or "FLOW" in result.stdout, \
+        "Built-in namespaces should be listed"
+
+
+# ============================================================================
+# Test: SDLC Document Identification
+# ============================================================================
+
+def test_sdlc_document_identification(temp_project):
+    """
+    SDLC documents are identified by SDLC-{NAMESPACE}-{TYPE} pattern.
+
+    Verifies: REQ-DOC-015
+    """
+    # Create SDLC directory structure for FLOW namespace
+    (temp_project / "QMS" / "SDLC-FLOW").mkdir(parents=True, exist_ok=True)
+    (temp_project / "QMS" / ".meta" / "FLOW-RS").mkdir(parents=True, exist_ok=True)
+    (temp_project / "QMS" / ".audit" / "FLOW-RS").mkdir(parents=True, exist_ok=True)
+
+    # [REQ-DOC-015] Create FLOW-RS document
+    result = run_qms(temp_project, "claude", "create", "FLOW-RS",
+                     "--title", "Flow Requirements Specification")
+    assert result.returncode == 0, f"Create FLOW-RS failed: {result.stderr}"
+
+    # Verify document ID follows SDLC-{NAMESPACE}-{TYPE} pattern
+    assert (temp_project / "QMS" / "SDLC-FLOW" / "SDLC-FLOW-RS-draft.md").exists()
+
+    # Verify metadata has correct doc_id
+    meta = read_meta(temp_project, "SDLC-FLOW-RS", "FLOW-RS")
+    assert meta is not None, "Metadata should exist"
+    assert meta["doc_id"] == "SDLC-FLOW-RS"
+
+
+# ============================================================================
+# Test: Folder-per-Document Storage
+# ============================================================================
+
+def test_folder_per_document_cr(temp_project):
+    """
+    CR documents use folder-per-document storage pattern.
+
+    Verifies: REQ-DOC-013
+    """
+    # [REQ-DOC-013] Create CR
+    result = run_qms(temp_project, "claude", "create", "CR", "--title", "Folder Test CR")
+    assert result.returncode == 0
+
+    # Verify folder structure QMS/CR/CR-001/CR-001-draft.md
+    cr_folder = temp_project / "QMS" / "CR" / "CR-001"
+    assert cr_folder.exists(), "CR should have dedicated folder"
+    assert cr_folder.is_dir(), "CR-001 should be a directory"
+    assert (cr_folder / "CR-001-draft.md").exists(), "CR draft should be inside folder"
+
+
+def test_folder_per_document_inv(temp_project):
+    """
+    INV documents use folder-per-document storage pattern.
+
+    Verifies: REQ-DOC-013
+    """
+    # [REQ-DOC-013] Create INV
+    result = run_qms(temp_project, "claude", "create", "INV", "--title", "Folder Test INV")
+    assert result.returncode == 0
+
+    # Verify folder structure QMS/INV/INV-001/INV-001-draft.md
+    inv_folder = temp_project / "QMS" / "INV" / "INV-001"
+    assert inv_folder.exists(), "INV should have dedicated folder"
+    assert inv_folder.is_dir(), "INV-001 should be a directory"
+    assert (inv_folder / "INV-001-draft.md").exists(), "INV draft should be inside folder"
+
+
+def test_child_documents_in_parent_folder(temp_project):
+    """
+    Child documents (TP, VAR, ER) are stored in parent's folder.
+
+    Verifies: REQ-DOC-013
+    """
+    # Create parent CR
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Parent CR")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+
+    # [REQ-DOC-013] Create TP child - should be in CR-001 folder
+    result = run_qms(temp_project, "claude", "create", "TP", "--parent", "CR-001",
+                     "--title", "Test Protocol")
+    assert result.returncode == 0
+
+    cr_folder = temp_project / "QMS" / "CR" / "CR-001"
+    assert (cr_folder / "CR-001-TP-001-draft.md").exists(), \
+        "TP should be stored in parent CR's folder"

@@ -285,3 +285,90 @@ def test_unknown_user_rejection(temp_project):
     # Try another command type
     result = run_qms(temp_project, "fake_qa", "inbox")
     assert result.returncode != 0, "Unknown user should be rejected for all commands"
+
+
+# ============================================================================
+# Test: Assignment Validation
+# ============================================================================
+
+def test_assignment_validation_review(temp_project):
+    """
+    Assignment validates that assignees are authorized for review workflows.
+
+    Verifies: REQ-SEC-007
+    """
+    # Create and route for review
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Assignment Validation Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+
+    # [REQ-SEC-007] Assign valid reviewer (tu_ui is in reviewer group)
+    result = run_qms(temp_project, "qa", "assign", "SOP-001", "--assignees", "tu_ui")
+    assert result.returncode == 0, "Valid reviewer should be assignable"
+
+    # Verify tu_ui is in pending_assignees
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert "tu_ui" in meta["pending_assignees"]
+
+
+def test_assignment_validation_approval(temp_project):
+    """
+    Assignment for approval validates assignees are in quality or reviewer groups.
+
+    Verifies: REQ-SEC-007
+    """
+    # Create and get to IN_APPROVAL
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Approval Assignment Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    run_qms(temp_project, "qa", "review", "SOP-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "IN_APPROVAL"
+
+    # [REQ-SEC-007] Assign valid approver (tu_scene is in reviewer group, can approve)
+    result = run_qms(temp_project, "qa", "assign", "SOP-001", "--assignees", "tu_scene")
+    assert result.returncode == 0, "Valid approver should be assignable"
+
+
+# ============================================================================
+# Test: Workspace/Inbox Isolation
+# ============================================================================
+
+def test_workspace_isolation(temp_project):
+    """
+    Users cannot access other users' workspaces.
+
+    Verifies: REQ-SEC-008
+    """
+    # Create document as claude (auto-checks out to claude's workspace)
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Workspace Isolation Test")
+
+    # Verify document is in claude's workspace
+    workspace_path = temp_project / ".claude" / "users" / "claude" / "workspace" / "SOP-001.md"
+    assert workspace_path.exists(), "Document should be in claude's workspace"
+
+    # [REQ-SEC-008] qa should not be able to access claude's workspace
+    result = run_qms(temp_project, "qa", "workspace")
+    assert "SOP-001" not in result.stdout, "qa should not see claude's workspace documents"
+
+
+def test_inbox_isolation(temp_project):
+    """
+    Users cannot access other users' inboxes.
+
+    Verifies: REQ-SEC-008
+    """
+    # Create and route for review (assigns to qa)
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Inbox Isolation Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+
+    # Verify task is in qa's inbox
+    result = run_qms(temp_project, "qa", "inbox")
+    assert "SOP-001" in result.stdout, "Task should be in qa's inbox"
+
+    # [REQ-SEC-008] tu_ui should not see qa's tasks
+    result = run_qms(temp_project, "tu_ui", "inbox")
+    assert "SOP-001" not in result.stdout, "tu_ui should not see qa's inbox tasks"

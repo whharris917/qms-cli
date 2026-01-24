@@ -406,3 +406,71 @@ def test_workspace_empty_after_checkin(temp_project):
     # Document should not appear since it's checked in
     # (It might show empty message or just not list SOP-001)
     assert "SOP-001" not in result.stdout or "empty" in result.stdout.lower() or "no documents" in result.stdout.lower()
+
+
+# ============================================================================
+# Test: Comments Visibility Restriction
+# ============================================================================
+
+@pytest.mark.xfail(reason="REQ-QRY-007 not yet implemented - comments restriction pending")
+def test_comments_restricted_during_review(temp_project):
+    """
+    Comments are not visible during IN_REVIEW status.
+
+    Verifies: REQ-QRY-007
+    """
+    # Create, submit review, then re-route to get IN_REVIEW with prior comments
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Comments Visibility Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+
+    # Submit review with comment
+    run_qms(temp_project, "qa", "review", "SOP-001",
+            "--request-updates", "--comment", "Previous review comment")
+
+    # Checkout, edit, checkin, re-route to get back to IN_REVIEW
+    run_qms(temp_project, "claude", "checkout", "SOP-001")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "IN_REVIEW"
+
+    # [REQ-QRY-007] Comments query during IN_REVIEW should be restricted
+    result = run_qms(temp_project, "claude", "comments", "SOP-001")
+    # The behavior depends on implementation - either returns error or empty
+    # The requirement says comments shall not be displayed
+    # We check that the previous comment is not shown
+    if result.returncode == 0:
+        assert "Previous review comment" not in result.stdout or \
+               "restricted" in result.stdout.lower() or \
+               "not available" in result.stdout.lower(), \
+               "Comments should not be displayed during IN_REVIEW"
+
+
+@pytest.mark.xfail(reason="REQ-QRY-007 not yet implemented - comments restriction pending")
+def test_comments_restricted_during_approval(temp_project):
+    """
+    Comments are not visible during IN_APPROVAL status.
+
+    Verifies: REQ-QRY-007
+    """
+    # Create SOP and get to IN_APPROVAL
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Approval Comments Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    run_qms(temp_project, "qa", "review", "SOP-001",
+            "--recommend", "--comment", "Review comment before approval")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "IN_APPROVAL"
+
+    # [REQ-QRY-007] Comments query during IN_APPROVAL should be restricted
+    result = run_qms(temp_project, "claude", "comments", "SOP-001")
+    # Similar to above - verify restriction is in effect
+    if result.returncode == 0:
+        assert "Review comment before approval" not in result.stdout or \
+               "restricted" in result.stdout.lower() or \
+               "not available" in result.stdout.lower(), \
+               "Comments should not be displayed during IN_APPROVAL"

@@ -121,7 +121,7 @@ def strip_template_comments(body: str) -> str:
 
 def create_minimal_template(doc_id: str, title: str) -> Tuple[Dict[str, Any], str]:
     """Create minimal fallback template when no TEMPLATE document exists."""
-    frontmatter = {"title": title}
+    frontmatter = {"title": title, "revision_summary": "Initial draft"}
     body = f"""# {doc_id}: {title}
 
 ## 1. Purpose
