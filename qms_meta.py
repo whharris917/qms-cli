@@ -188,6 +188,7 @@ def update_meta_review_complete(
     meta: Dict[str, Any],
     user: str,
     remaining_assignees: List[str],
+    outcome: str,
     new_status: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -197,13 +198,55 @@ def update_meta_review_complete(
         meta: Current metadata
         user: Reviewer who completed
         remaining_assignees: Assignees still pending
+        outcome: Review outcome (RECOMMEND or UPDATES_REQUIRED)
         new_status: New status if all reviews complete
     """
     meta = meta.copy()
     meta["pending_assignees"] = remaining_assignees
+
+    # CR-034: Track review outcomes for approval gate
+    if "review_outcomes" not in meta:
+        meta["review_outcomes"] = {}
+    meta["review_outcomes"][user] = outcome
+
     if new_status:
         meta["status"] = new_status
     return meta
+
+
+def check_approval_gate(meta: Dict[str, Any]) -> tuple[bool, str]:
+    """
+    Check if document can be routed for approval.
+
+    CR-034: Approval gate requires:
+    1. All reviews have RECOMMEND outcome (no UPDATES_REQUIRED)
+    2. At least one review was submitted by a quality group member
+
+    Returns (can_route, error_message).
+    """
+    from qms_auth import get_user_group
+
+    review_outcomes = meta.get("review_outcomes", {})
+
+    if not review_outcomes:
+        return False, "No reviews on record. Document must be reviewed before approval routing."
+
+    # Check 1: All reviews must recommend
+    for reviewer, outcome in review_outcomes.items():
+        if outcome == "UPDATES_REQUIRED":
+            return False, f"Cannot route for approval: {reviewer} requested updates."
+
+    # Check 2: At least one quality review
+    has_quality_review = False
+    for reviewer in review_outcomes.keys():
+        if get_user_group(reviewer) == "quality":
+            has_quality_review = True
+            break
+
+    if not has_quality_review:
+        return False, "Cannot route for approval: no quality review on record."
+
+    return True, ""
 
 
 def update_meta_approval(

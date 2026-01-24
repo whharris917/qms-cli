@@ -13,22 +13,22 @@ import pytest
 class TestGetUserGroup:
     """Tests for get_user_group() function."""
 
-    def test_initiators(self, qms_module):
-        """Lead and claude should be in initiators group."""
-        assert qms_module.get_user_group("lead") == "initiators"
-        assert qms_module.get_user_group("claude") == "initiators"
+    def test_administrators(self, qms_module):
+        """Lead and claude should be in administrator group (CR-034: SC-001)."""
+        assert qms_module.get_user_group("lead") == "administrator"
+        assert qms_module.get_user_group("claude") == "administrator"
 
-    def test_qa_group(self, qms_module):
-        """QA user should be in qa group."""
-        assert qms_module.get_user_group("qa") == "qa"
+    def test_quality_group(self, qms_module):
+        """QA user should be in quality group (CR-034: renamed from qa)."""
+        assert qms_module.get_user_group("qa") == "quality"
 
-    def test_reviewers(self, qms_module):
-        """TU and BU users should be in reviewers group."""
-        assert qms_module.get_user_group("tu_ui") == "reviewers"
-        assert qms_module.get_user_group("tu_scene") == "reviewers"
-        assert qms_module.get_user_group("tu_sketch") == "reviewers"
-        assert qms_module.get_user_group("tu_sim") == "reviewers"
-        assert qms_module.get_user_group("bu") == "reviewers"
+    def test_reviewer_group(self, qms_module):
+        """TU and BU users should be in reviewer group (CR-034: renamed from reviewers)."""
+        assert qms_module.get_user_group("tu_ui") == "reviewer"
+        assert qms_module.get_user_group("tu_scene") == "reviewer"
+        assert qms_module.get_user_group("tu_sketch") == "reviewer"
+        assert qms_module.get_user_group("tu_sim") == "reviewer"
+        assert qms_module.get_user_group("bu") == "reviewer"
 
     def test_unknown_user(self, qms_module):
         """Unknown users should return 'unknown' group."""
@@ -57,10 +57,11 @@ class TestCheckPermission:
         allowed, msg = qms_module.check_permission("qa", "assign")
         assert allowed is True
 
-    def test_initiator_cannot_assign(self, qms_module):
-        """Initiators should not be able to assign reviewers."""
+    def test_administrator_can_assign(self, qms_module):
+        """Administrators can assign (via hierarchy - admin > quality)."""
+        # CR-034: Administrator inherits quality permissions via hierarchy
         allowed, msg = qms_module.check_permission("claude", "assign")
-        assert allowed is False
+        assert allowed is True
 
     def test_owner_only_command(self, qms_module):
         """Owner-only commands should check document ownership."""
@@ -68,19 +69,19 @@ class TestCheckPermission:
         allowed, msg = qms_module.check_permission("claude", "release", doc_owner="claude")
         assert allowed is True
 
-        # Non-owner cannot release (unless also initiator)
+        # Non-owner cannot release
         allowed, msg = qms_module.check_permission("qa", "release", doc_owner="claude")
         assert allowed is False
 
-    def test_initiators_can_act_on_each_other(self, qms_module):
-        """Initiators should be able to act on each other's documents."""
-        # Lead can release claude's document
+    def test_strict_owner_only(self, qms_module):
+        """CR-034 CC-001: Cross-user exception removed - strict owner-only enforcement."""
+        # Lead CANNOT release claude's document (strict owner-only)
         allowed, msg = qms_module.check_permission("lead", "release", doc_owner="claude")
-        assert allowed is True
+        assert allowed is False
 
-        # Claude can release lead's document
+        # Claude CANNOT release lead's document (strict owner-only)
         allowed, msg = qms_module.check_permission("claude", "release", doc_owner="lead")
-        assert allowed is True
+        assert allowed is False
 
     def test_assigned_only_command(self, qms_module):
         """Assigned-only commands should check assignment."""

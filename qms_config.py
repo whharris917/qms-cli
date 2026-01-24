@@ -75,25 +75,85 @@ TRANSITIONS = {
 # Document Types
 # =============================================================================
 
+# Base document types (non-namespace specific)
 DOCUMENT_TYPES = {
     "SOP": {"path": "SOP", "executable": False, "prefix": "SOP"},
     "CR": {"path": "CR", "executable": True, "prefix": "CR", "folder_per_doc": True},
     "INV": {"path": "INV", "executable": True, "prefix": "INV", "folder_per_doc": True},
-    "CAPA": {"path": "INV", "executable": True, "prefix": "CAPA", "parent_type": "INV"},
     "TP": {"path": "CR", "executable": True, "prefix": "TP", "parent_type": "CR"},
     "ER": {"path": "CR", "executable": True, "prefix": "ER", "parent_type": "TP"},
     "VAR": {"path": "CR", "executable": True, "prefix": "VAR"},
-    "RS": {"path": "SDLC-FLOW", "executable": False, "prefix": "SDLC-FLOW-RS", "singleton": True},
-    "DS": {"path": "SDLC-FLOW", "executable": False, "prefix": "SDLC-FLOW-DS", "singleton": True},
-    "CS": {"path": "SDLC-FLOW", "executable": False, "prefix": "SDLC-FLOW-CS", "singleton": True},
-    "RTM": {"path": "SDLC-FLOW", "executable": False, "prefix": "SDLC-FLOW-RTM", "singleton": True},
-    "OQ": {"path": "SDLC-FLOW", "executable": False, "prefix": "SDLC-FLOW-OQ", "singleton": True},
-    # SDLC-QMS document types (QMS CLI qualification)
-    "QMS-RS": {"path": "SDLC-QMS", "executable": False, "prefix": "SDLC-QMS-RS", "singleton": True},
-    "QMS-RTM": {"path": "SDLC-QMS", "executable": False, "prefix": "SDLC-QMS-RTM", "singleton": True},
     # Named document types (name-based rather than numbered)
     "TEMPLATE": {"path": "TEMPLATE", "executable": False, "prefix": "TEMPLATE"},
 }
+
+
+# =============================================================================
+# SDLC Namespace Registry
+# =============================================================================
+
+# Registered SDLC namespaces - each gets RS and RTM document types
+# Format: {namespace_name: {"path": folder_path}}
+SDLC_NAMESPACES = {
+    "FLOW": {"path": "SDLC-FLOW"},
+    "QMS": {"path": "SDLC-QMS"},
+}
+
+
+def get_all_sdlc_namespaces() -> dict:
+    """
+    Get all SDLC namespaces (built-in + persisted).
+
+    Merges the built-in SDLC_NAMESPACES with any custom namespaces
+    stored in QMS/.meta/sdlc_namespaces.json.
+    """
+    import json
+    from pathlib import Path
+
+    namespaces = dict(SDLC_NAMESPACES)
+
+    # Try to load persisted namespaces
+    try:
+        # Find QMS root (go up from this file's location)
+        config_dir = Path(__file__).parent.parent / "QMS" / ".meta"
+        config_path = config_dir / "sdlc_namespaces.json"
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                persisted = json.load(f)
+                namespaces.update(persisted)
+    except (json.JSONDecodeError, IOError, FileNotFoundError):
+        pass  # Use defaults if config is unavailable
+
+    return namespaces
+
+
+def get_all_document_types() -> dict:
+    """
+    Get all document types including dynamically generated SDLC namespace types.
+
+    Returns the base DOCUMENT_TYPES plus RS/RTM types for each registered namespace.
+    Example: FLOW namespace generates FLOW-RS and FLOW-RTM types.
+    """
+    all_types = dict(DOCUMENT_TYPES)
+
+    for namespace, config in get_all_sdlc_namespaces().items():
+        path = config["path"]
+        # Generate RS type for this namespace
+        all_types[f"{namespace}-RS"] = {
+            "path": path,
+            "executable": False,
+            "prefix": f"SDLC-{namespace}-RS",
+            "singleton": True,
+        }
+        # Generate RTM type for this namespace
+        all_types[f"{namespace}-RTM"] = {
+            "path": path,
+            "executable": False,
+            "prefix": f"SDLC-{namespace}-RTM",
+            "singleton": True,
+        }
+
+    return all_types
 
 
 # =============================================================================
@@ -103,37 +163,48 @@ DOCUMENT_TYPES = {
 # Valid QMS users
 VALID_USERS = {"lead", "claude", "qa", "bu", "tu_ui", "tu_scene", "tu_sketch", "tu_sim"}
 
-# User group definitions
+# User group definitions (hierarchy: administrator > initiator > quality > reviewer)
 USER_GROUPS = {
-    "initiators": {"lead", "claude"},       # Can create documents, initiate workflows
-    "qa": {"qa"},                            # Can modify workflows, review, approve
-    "reviewers": {"tu_ui", "tu_scene", "tu_sketch", "tu_sim", "bu"},  # Review/approve only
+    "administrator": {"lead", "claude"},    # Full system access (inherits initiator + fix)
+    "initiator": set(),                     # Placeholder for future non-admin initiators
+    "quality": {"qa"},                      # Can modify workflows, review, approve
+    "reviewer": {"tu_ui", "tu_scene", "tu_sketch", "tu_sim", "bu"},  # Review/approve only
 }
+
+# Group hierarchy for permission inheritance
+GROUP_HIERARCHY = ["administrator", "initiator", "quality", "reviewer"]
 
 # Permission definitions by command
 # "all" = any valid user, "assigned" = must be assigned to workflow
+# Note: administrator inherits all permissions via hierarchy check
 PERMISSIONS = {
-    "create":    {"groups": ["initiators"]},
-    "checkout":  {"groups": ["initiators"]},
-    "checkin":   {"groups": ["initiators"], "owner_only": True},
-    "route":     {"groups": ["initiators", "qa"], "owner_only": True},  # CR-032
-    "assign":    {"groups": ["qa"]},
-    "review":    {"groups": ["initiators", "qa", "reviewers"], "assigned_only": True},
-    "approve":   {"groups": ["qa", "reviewers"], "assigned_only": True},
-    "reject":    {"groups": ["qa", "reviewers"], "assigned_only": True},
-    "release":   {"groups": ["initiators"], "owner_only": True},
-    "revert":    {"groups": ["initiators"], "owner_only": True},
-    "close":     {"groups": ["initiators"], "owner_only": True},
-    "read":      {"groups": ["initiators", "qa", "reviewers"]},
-    "status":    {"groups": ["initiators", "qa", "reviewers"]},
-    "inbox":     {"groups": ["initiators", "qa", "reviewers"]},
-    "workspace": {"groups": ["initiators", "qa", "reviewers"]},
+    "create":    {"groups": ["initiator"]},
+    "checkout":  {"groups": ["initiator"]},
+    "checkin":   {"groups": ["initiator"], "owner_only": True},
+    "route":     {"groups": ["initiator"], "owner_only": True},  # CR-034: quality removed
+    "assign":    {"groups": ["quality"]},
+    "review":    {"groups": ["initiator", "quality", "reviewer"], "assigned_only": True},
+    "approve":   {"groups": ["quality", "reviewer"], "assigned_only": True},
+    "reject":    {"groups": ["quality", "reviewer"], "assigned_only": True},
+    "release":   {"groups": ["initiator"], "owner_only": True},
+    "revert":    {"groups": ["initiator"], "owner_only": True},
+    "close":     {"groups": ["initiator"], "owner_only": True},
+    "read":      {"groups": ["initiator", "quality", "reviewer"]},
+    "status":    {"groups": ["initiator", "quality", "reviewer"]},
+    "inbox":     {"groups": ["initiator", "quality", "reviewer"]},
+    "workspace": {"groups": ["initiator", "quality", "reviewer"]},
 }
 
 # Helpful guidance messages for each group
 GROUP_GUIDANCE = {
-    "initiators": """
-As an Initiator (lead, claude), you can:
+    "administrator": """
+As an Administrator (lead), you have full system access:
+  - All initiator capabilities (create, checkout, checkin, route, release, close)
+  - All quality capabilities (assign, review, approve, reject)
+  - System configuration and maintenance
+""",
+    "initiator": """
+As an Initiator (claude), you can:
   - Create new documents: qms --user {you} create SOP --title "Title"
   - Check out documents for editing: qms --user {you} checkout DOC-ID
   - Check in edited documents: qms --user {you} checkin DOC-ID
@@ -141,21 +212,21 @@ As an Initiator (lead, claude), you can:
   - Release/close executable documents you own
 
 You cannot:
-  - Assign additional reviewers (QA only)
+  - Assign additional reviewers (Quality only)
   - Approve or reject documents
 """,
-    "qa": """
-As QA, you can:
+    "quality": """
+As Quality (qa), you can:
   - Assign reviewers to workflows: qms --user qa assign DOC-ID --assignees tu_ui tu_scene
   - Review documents: qms --user qa review DOC-ID --recommend --comment "..."
   - Approve documents: qms --user qa approve DOC-ID
   - Reject documents: qms --user qa reject DOC-ID --comment "..."
 
 You cannot:
-  - Create new documents (Initiators only)
-  - Route documents for workflows (Initiators only)
+  - Create new documents (Initiator only)
+  - Route documents for workflows (Initiator only)
 """,
-    "reviewers": """
+    "reviewer": """
 As a Reviewer (TU/BU), you can:
   - Review documents when assigned: qms --user {you} review DOC-ID --recommend --comment "..."
   - Approve documents when assigned: qms --user {you} approve DOC-ID
@@ -164,9 +235,9 @@ As a Reviewer (TU/BU), you can:
   - Read any document: qms --user {you} read DOC-ID
 
 You cannot:
-  - Create documents (Initiators only)
-  - Route documents (Initiators only)
-  - Assign reviewers (QA only)
+  - Create documents (Initiator only)
+  - Route documents (Initiator only)
+  - Assign reviewers (Quality only)
 """,
 }
 

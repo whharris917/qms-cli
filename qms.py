@@ -172,6 +172,11 @@ Valid users:
     # verify-migration
     p_verify = subparsers.add_parser("verify-migration", help="Verify migration completed successfully")
 
+    # namespace (CR-034)
+    p_namespace = subparsers.add_parser("namespace", help="Manage SDLC namespaces")
+    p_namespace.add_argument("action", nargs="?", default="list", help="Action: list, add")
+    p_namespace.add_argument("name", nargs="?", help="Namespace name (for add)")
+
     args = parser.parse_args()
 
     if not args.command:

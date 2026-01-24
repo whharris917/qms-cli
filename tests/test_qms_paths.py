@@ -30,13 +30,11 @@ class TestGetDocType:
         """INV documents should return 'INV' type."""
         assert qms_module.get_doc_type("INV-001") == "INV"
 
-    def test_capa_type(self, qms_module):
-        """CAPA documents should return 'CAPA' type."""
-        assert qms_module.get_doc_type("INV-001-CAPA-001") == "CAPA"
-
     def test_tp_type(self, qms_module):
-        """TP (Test Protocol) documents should return 'TP' type."""
-        assert qms_module.get_doc_type("CR-001-TP") == "TP"
+        """TP (Test Protocol) documents should return 'TP' type (CR-034: sequential format)."""
+        # CR-034 CC-007: TP now uses sequential format CR-001-TP-001
+        assert qms_module.get_doc_type("CR-001-TP-001") == "TP"
+        assert qms_module.get_doc_type("CR-028-TP-002") == "TP"
 
     def test_var_type(self, qms_module):
         """VAR (Variance Report) documents should return 'VAR' type."""
@@ -45,12 +43,14 @@ class TestGetDocType:
         assert qms_module.get_doc_type("CR-001-VAR-123") == "VAR"
 
     def test_sdlc_flow_types(self, qms_module):
-        """SDLC-FLOW document types should be correctly identified."""
-        assert qms_module.get_doc_type("SDLC-FLOW-RS") == "RS"
-        assert qms_module.get_doc_type("SDLC-FLOW-RTM") == "RTM"
+        """SDLC-FLOW document types should return namespace-prefixed type."""
+        # CR-034 SC-002: SDLC types now return {NAMESPACE}-{TYPE} format
+        assert qms_module.get_doc_type("SDLC-FLOW-RS") == "FLOW-RS"
+        assert qms_module.get_doc_type("SDLC-FLOW-RTM") == "FLOW-RTM"
 
     def test_sdlc_qms_types(self, qms_module):
-        """SDLC-QMS document types should be correctly identified."""
+        """SDLC-QMS document types should return namespace-prefixed type."""
+        # CR-034 SC-002: SDLC types now return {NAMESPACE}-{TYPE} format
         assert qms_module.get_doc_type("SDLC-QMS-RS") == "QMS-RS"
         assert qms_module.get_doc_type("SDLC-QMS-RTM") == "QMS-RTM"
 

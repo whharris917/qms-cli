@@ -16,7 +16,7 @@ from qms_config import Status, TRANSITIONS
 from qms_paths import get_doc_type, get_doc_path, get_inbox_path
 from qms_auth import get_current_user, check_permission, verify_user_identity
 from qms_templates import generate_review_task_content, generate_approval_task_content
-from qms_meta import read_meta, write_meta, update_meta_route
+from qms_meta import read_meta, write_meta, update_meta_route, check_approval_gate
 from qms_audit import log_route_review, log_route_approval, log_status_change
 from workflow import get_workflow_engine, Action, ExecutionPhase
 
@@ -100,6 +100,11 @@ Then route for review:
         action = Action.ROUTE_REVIEW
     elif args.approval:
         action = Action.ROUTE_APPROVAL
+        # CR-034: Check approval gate before allowing approval routing
+        can_route, gate_error = check_approval_gate(meta)
+        if not can_route:
+            print(f"Error: {gate_error}")
+            return 1
     else:
         print("Error: Must specify workflow type (--review or --approval)")
         return 1
@@ -124,6 +129,21 @@ Then route for review:
         # --retire only applies to final approval routing
         if workflow_type not in ("APPROVAL", "POST_APPROVAL"):
             print("Error: --retire only applies to --approval routing (for final approval phase)")
+            return 1
+        # CR-034: Check version >= 1.0 (only once-effective documents can be retired)
+        version = meta.get("version", "0.1")
+        major_version = int(str(version).split(".")[0])
+        if major_version < 1:
+            print(f"""
+Error: Cannot retire document that was never effective.
+
+Current version: {version}
+Required: Version >= 1.0
+
+Only documents that have been approved at least once (effective) can be retired.
+If you want to permanently delete an unapproved draft, use the cancel command:
+  qms --user {user} cancel {doc_id} --confirm
+""")
             return 1
         # Set retiring flag in meta (will be checked during approval)
         meta["retiring"] = True

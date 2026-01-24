@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Set, Tuple
 
-from qms_config import Status, DOCUMENT_TYPES, VALID_USERS
+from qms_config import Status, VALID_USERS
 from qms_paths import get_doc_type, get_doc_path, get_workspace_path, get_inbox_path
 from qms_auth import get_current_user, verify_user_identity, check_permission, get_user_group
 from qms_io import parse_frontmatter, read_document

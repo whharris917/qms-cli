@@ -106,6 +106,7 @@ def test_create_inv(temp_project):
 def test_create_tp_under_cr(temp_project):
     """
     TP is created as a child of CR, stored within CR's folder.
+    CR-034 CC-007: TP now uses sequential format CR-001-TP-001.
 
     Verifies: REQ-DOC-002
     """
@@ -113,17 +114,17 @@ def test_create_tp_under_cr(temp_project):
     run_qms(temp_project, "claude", "create", "CR", "--title", "Parent CR")
     run_qms(temp_project, "claude", "checkin", "CR-001")
 
-    # [REQ-DOC-002] Create TP under CR
+    # [REQ-DOC-002] Create TP under CR (now uses sequential ID)
     result = run_qms(temp_project, "claude", "create", "TP", "--parent", "CR-001",
                      "--title", "Test Protocol")
     assert result.returncode == 0, f"Create TP failed: {result.stderr}"
 
-    # Verify TP is in CR's folder
+    # Verify TP is in CR's folder with sequential ID
     cr_folder = temp_project / "QMS" / "CR" / "CR-001"
-    assert (cr_folder / "CR-001-TP-draft.md").exists(), "TP should be in CR folder"
+    assert (cr_folder / "CR-001-TP-001-draft.md").exists(), "TP should be in CR folder with sequential ID"
 
     # Verify ID format
-    meta = read_meta(temp_project, "CR-001-TP", "TP")
+    meta = read_meta(temp_project, "CR-001-TP-001", "TP")
     assert meta is not None, "TP metadata should exist"
     assert meta["doc_type"] == "TP"
 

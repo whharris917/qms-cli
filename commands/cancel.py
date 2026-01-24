@@ -32,9 +32,11 @@ def cmd_cancel(args) -> int:
     """Cancel a never-effective document (version < 1.0)."""
     user = get_current_user(args)
 
-    # Only initiators can cancel
-    if user not in USER_GROUPS["initiators"]:
-        print("Error: Only initiators can cancel documents.", file=sys.stderr)
+    # Only initiator-level users can cancel (administrator inherits initiator)
+    from qms_auth import get_user_group, has_group_permission
+    user_group = get_user_group(user)
+    if not has_group_permission(user_group, ["initiator"]):
+        print("Error: Only initiator-level users can cancel documents.", file=sys.stderr)
         return 1
 
     doc_id = args.doc_id

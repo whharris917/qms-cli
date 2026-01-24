@@ -7,7 +7,7 @@ and other filesystem locations within the QMS structure.
 import re
 from pathlib import Path
 
-from qms_config import DOCUMENT_TYPES
+from qms_config import DOCUMENT_TYPES, SDLC_NAMESPACES, get_all_document_types, get_all_sdlc_namespaces
 
 
 # =============================================================================
@@ -42,24 +42,23 @@ USERS_ROOT = PROJECT_ROOT / ".claude" / "users"
 
 def get_doc_type(doc_id: str) -> str:
     """Determine document type from doc_id."""
-    if doc_id.startswith("SDLC-QMS-"):
-        suffix = doc_id.replace("SDLC-QMS-", "")
-        if suffix in ["RS", "RTM"]:
-            return f"QMS-{suffix}"
-    if doc_id.startswith("SDLC-FLOW-"):
-        suffix = doc_id.replace("SDLC-FLOW-", "")
-        if suffix in ["RS", "DS", "CS", "RTM", "OQ"]:
-            return suffix
+    # Check SDLC namespace document types dynamically
+    for namespace in get_all_sdlc_namespaces():
+        prefix = f"SDLC-{namespace}-"
+        if doc_id.startswith(prefix):
+            suffix = doc_id.replace(prefix, "")
+            if suffix in ["RS", "RTM"]:
+                return f"{namespace}-{suffix}"
+
     if doc_id.startswith("SOP-"):
         return "SOP"
     if doc_id.startswith("TEMPLATE-"):
         return "TEMPLATE"
     if "-TP-ER-" in doc_id:
         return "ER"
-    if "-TP" in doc_id:
+    if "-TP-" in doc_id:
+        # CR-034: TP now uses sequential format: CR-001-TP-001
         return "TP"
-    if "-CAPA-" in doc_id:
-        return "CAPA"
     if "-VAR-" in doc_id:
         return "VAR"
     if doc_id.startswith("CR-"):
@@ -76,7 +75,8 @@ def get_doc_type(doc_id: str) -> str:
 def get_doc_path(doc_id: str, draft: bool = False) -> Path:
     """Get the path to a document."""
     doc_type = get_doc_type(doc_id)
-    config = DOCUMENT_TYPES[doc_type]
+    all_types = get_all_document_types()
+    config = all_types[doc_type]
 
     base_path = QMS_ROOT / config["path"]
 
@@ -88,18 +88,12 @@ def get_doc_path(doc_id: str, draft: bool = False) -> Path:
         if match:
             parent_id = match.group(1)
             parent_type = "CR" if parent_id.startswith("CR-") else "INV"
-            parent_config = DOCUMENT_TYPES[parent_type]
+            parent_config = all_types[parent_type]
             base_path = QMS_ROOT / parent_config["path"] / parent_id
     elif doc_type in ["TP", "ER"]:
         # CR-032 Gap 3: TP/ER live in parent CR folder
         # CR-001-TP -> CR-001, CR-001-TP-ER-001 -> CR-001
         match = re.match(r"(CR-\d+)", doc_id)
-        if match:
-            base_path = base_path / match.group(1)
-    elif doc_type == "CAPA":
-        # CAPA lives in parent INV folder
-        # INV-001-CAPA-001 -> INV-001
-        match = re.match(r"(INV-\d+)", doc_id)
         if match:
             base_path = base_path / match.group(1)
     # Handle folder-per-doc types (CR, INV)
@@ -113,7 +107,8 @@ def get_doc_path(doc_id: str, draft: bool = False) -> Path:
 def get_archive_path(doc_id: str, version: str) -> Path:
     """Get the archive path for a specific version."""
     doc_type = get_doc_type(doc_id)
-    config = DOCUMENT_TYPES[doc_type]
+    all_types = get_all_document_types()
+    config = all_types[doc_type]
 
     base_path = ARCHIVE_ROOT / config["path"]
 
@@ -123,15 +118,11 @@ def get_archive_path(doc_id: str, version: str) -> Path:
         if match:
             parent_id = match.group(1)
             parent_type = "CR" if parent_id.startswith("CR-") else "INV"
-            parent_config = DOCUMENT_TYPES[parent_type]
+            parent_config = all_types[parent_type]
             base_path = ARCHIVE_ROOT / parent_config["path"] / parent_id
     elif doc_type in ["TP", "ER"]:
         # CR-032 Gap 3: TP/ER live in parent CR folder
         match = re.match(r"(CR-\d+)", doc_id)
-        if match:
-            base_path = base_path / match.group(1)
-    elif doc_type == "CAPA":
-        match = re.match(r"(INV-\d+)", doc_id)
         if match:
             base_path = base_path / match.group(1)
     elif config.get("folder_per_doc"):
@@ -152,7 +143,8 @@ def get_inbox_path(user: str) -> Path:
 
 def get_next_number(doc_type: str) -> int:
     """Get the next available number for a document type."""
-    config = DOCUMENT_TYPES[doc_type]
+    all_types = get_all_document_types()
+    config = all_types[doc_type]
     base_path = QMS_ROOT / config["path"]
 
     if not base_path.exists():
@@ -176,7 +168,8 @@ def get_next_number(doc_type: str) -> int:
 def get_next_nested_number(parent_id: str, child_type: str) -> int:
     """Get the next available number for a nested document type (e.g., CR-028-VAR-001)."""
     parent_type = get_doc_type(parent_id)
-    parent_config = DOCUMENT_TYPES[parent_type]
+    all_types = get_all_document_types()
+    parent_config = all_types[parent_type]
 
     # Nested documents live in parent's folder
     if parent_config.get("folder_per_doc"):

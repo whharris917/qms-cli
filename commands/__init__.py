@@ -30,3 +30,4 @@ from . import history
 from . import comments
 from . import migrate
 from . import verify_migration
+from . import namespace

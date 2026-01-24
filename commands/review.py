@@ -144,7 +144,7 @@ If you should be reviewing this document, ask QA to assign you:
             log_status_change(doc_id, doc_type, user, version, current_status.value, new_status.value)
 
     meta = update_meta_review_complete(
-        meta, user, remaining_assignees,
+        meta, user, remaining_assignees, outcome,
         new_status=new_status.value if new_status else None
     )
     write_meta(doc_id, doc_type, meta)

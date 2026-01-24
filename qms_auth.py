@@ -8,7 +8,7 @@ import sys
 from typing import List
 
 from qms_config import (
-    VALID_USERS, USER_GROUPS, PERMISSIONS, GROUP_GUIDANCE
+    VALID_USERS, USER_GROUPS, PERMISSIONS, GROUP_GUIDANCE, GROUP_HIERARCHY
 )
 
 
@@ -42,9 +42,10 @@ def verify_user_identity(user: str) -> bool:
 Error: '{user}' is not a valid QMS user.
 
 Valid users by group:
-  Initiators: {', '.join(sorted(USER_GROUPS['initiators']))}
-  QA:         {', '.join(sorted(USER_GROUPS['qa']))}
-  Reviewers:  {', '.join(sorted(USER_GROUPS['reviewers']))}
+  Administrator: {', '.join(sorted(USER_GROUPS['administrator']))}
+  Initiator:     {', '.join(sorted(USER_GROUPS['initiator']))}
+  Quality:       {', '.join(sorted(USER_GROUPS['quality']))}
+  Reviewer:      {', '.join(sorted(USER_GROUPS['reviewer']))}
 
 Specify your identity with: qms --user <username> <command>
 """)
@@ -55,6 +56,29 @@ Specify your identity with: qms --user <username> <command>
 # =============================================================================
 # Permission Checking
 # =============================================================================
+
+def has_group_permission(user_group: str, allowed_groups: list) -> bool:
+    """
+    Check if a user's group has permission, considering hierarchy.
+    Higher groups inherit permissions from lower groups.
+    Hierarchy: administrator > initiator > quality > reviewer
+    """
+    if user_group in allowed_groups:
+        return True
+
+    # Check hierarchy inheritance
+    try:
+        user_level = GROUP_HIERARCHY.index(user_group)
+        for allowed in allowed_groups:
+            if allowed in GROUP_HIERARCHY:
+                allowed_level = GROUP_HIERARCHY.index(allowed)
+                if user_level < allowed_level:  # Lower index = higher privilege
+                    return True
+    except ValueError:
+        pass  # Unknown group, no hierarchy benefit
+
+    return False
+
 
 def check_permission(user: str, command: str, doc_owner: str = None, assigned_users: List[str] = None) -> tuple[bool, str]:
     """
@@ -68,8 +92,8 @@ def check_permission(user: str, command: str, doc_owner: str = None, assigned_us
     user_group = get_user_group(user)
     allowed_groups = perm.get("groups", [])
 
-    # Check group membership
-    if user_group not in allowed_groups:
+    # Check group membership with hierarchy
+    if not has_group_permission(user_group, allowed_groups):
         group_names = ", ".join(allowed_groups)
         error = f"""
 Permission Denied: '{command}' command
@@ -81,21 +105,17 @@ Required role(s): {group_names}
 """
         return False, error
 
-    # Check owner requirement
+    # Check owner requirement (CC-001: strict ownership, no cross-user exception)
     if perm.get("owner_only") and doc_owner and doc_owner != user:
-        # For initiators, any initiator can act on behalf of documents
-        if user_group == "initiators" and doc_owner in USER_GROUPS.get("initiators", set()):
-            pass  # Allow initiators to act on each other's documents
-        else:
-            error = f"""
+        error = f"""
 Permission Denied: '{command}' command
 
 You ({user}) are not the responsible user for this document.
 Responsible user: {doc_owner}
 
-Only the document owner or another Initiator can perform this action.
+Only the document owner can perform this action.
 """
-            return False, error
+        return False, error
 
     # Check assignment requirement
     if perm.get("assigned_only") and assigned_users is not None:

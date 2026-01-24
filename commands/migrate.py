@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
-from qms_config import DOCUMENT_TYPES
+from qms_config import get_all_document_types
 from qms_paths import QMS_ROOT, get_doc_type
 from qms_io import read_document
 from qms_auth import get_current_user, verify_user_identity
@@ -55,7 +55,7 @@ def cmd_migrate(args) -> int:
     skipped = 0
     errors = 0
 
-    for doc_type, config in DOCUMENT_TYPES.items():
+    for doc_type, config in get_all_document_types().items():
         doc_path = QMS_ROOT / config["path"]
         if not doc_path.exists():
             continue

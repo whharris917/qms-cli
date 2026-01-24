@@ -495,6 +495,16 @@ class PromptRegistry:
         for title, content in config.additional_sections:
             additional_text += f"\n\n## {title}\n\n{content}"
 
+        # CR-034: Custom header rendering
+        header_text = ""
+        if config.custom_header:
+            header_text = f"\n{config.custom_header}\n\n---\n"
+
+        # CR-034: Custom footer rendering
+        footer_text = ""
+        if config.custom_footer:
+            footer_text = f"\n\n---\n\n{config.custom_footer}"
+
         return f"""---
 task_id: {task_id}
 task_type: REVIEW
@@ -504,7 +514,7 @@ assigned_by: {assigned_by}
 assigned_date: {today()}
 version: {version}
 ---
-
+{header_text}
 # REVIEW REQUEST: {doc_id}
 
 **Workflow:** {workflow_type}
@@ -570,7 +580,7 @@ Submit your review:
 ```
 /qms --user {assignee} review {doc_id} --request-updates --comment "[your structured review with findings]"
 ```
-"""
+{footer_text}"""
 
     def generate_approval_content(
         self,
@@ -608,6 +618,16 @@ Submit your review:
         # Build reminders
         reminders_text = "\n".join(f"- {r}" for r in config.critical_reminders)
 
+        # CR-034: Custom header rendering
+        header_text = ""
+        if config.custom_header:
+            header_text = f"\n{config.custom_header}\n\n---\n"
+
+        # CR-034: Custom footer rendering
+        footer_text = ""
+        if config.custom_footer:
+            footer_text = f"\n\n---\n\n{config.custom_footer}"
+
         return f"""---
 task_id: {task_id}
 task_type: APPROVAL
@@ -617,7 +637,7 @@ assigned_by: {assigned_by}
 assigned_date: {today()}
 version: {version}
 ---
-
+{header_text}
 # APPROVAL REQUEST: {doc_id}
 
 **Workflow:** {workflow_type}
@@ -658,7 +678,7 @@ Before approving, you MUST confirm:
 ```
 /qms --user {assignee} reject {doc_id} --comment "[reason for rejection]"
 ```
-"""
+{footer_text}"""
 
 
 # Global registry instance

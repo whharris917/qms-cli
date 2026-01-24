@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
-from qms_config import DOCUMENT_TYPES
+from qms_config import get_all_document_types
 from qms_paths import PROJECT_ROOT, QMS_ROOT, get_doc_path, get_workspace_path, get_next_number, get_next_nested_number, get_doc_type
 from qms_io import write_document_minimal
 from qms_auth import get_current_user, check_permission, verify_user_identity
@@ -46,13 +46,14 @@ def cmd_create(args) -> int:
         return 1
 
     doc_type = args.type.upper()
+    all_types = get_all_document_types()
 
-    if doc_type not in DOCUMENT_TYPES:
+    if doc_type not in all_types:
         print(f"Error: Unknown document type '{doc_type}'")
-        print(f"Valid types: {', '.join(DOCUMENT_TYPES.keys())}")
+        print(f"Valid types: {', '.join(all_types.keys())}")
         return 1
 
-    config = DOCUMENT_TYPES[doc_type]
+    config = all_types[doc_type]
 
     # Handle parent document requirement for VAR and TP types (CR-032 Gap 3)
     parent_id = getattr(args, 'parent', None)
@@ -81,20 +82,28 @@ def cmd_create(args) -> int:
     if config.get("singleton"):
         doc_id = config["prefix"]
     elif doc_type == "TP" and parent_id:
-        # CR-032 Gap 3: TP has singular ID: CR-001-TP (not CR-001-TP-001)
-        doc_id = f"{parent_id}-TP"
+        # CR-034: TP uses sequential format like VAR: CR-001-TP-001
+        next_num = get_next_nested_number(parent_id, "TP")
+        doc_id = f"{parent_id}-TP-{next_num:03d}"
     elif doc_type == "VAR" and parent_id:
         # Nested document: CR-028-VAR-001
         next_num = get_next_nested_number(parent_id, "VAR")
         doc_id = f"{parent_id}-VAR-{next_num:03d}"
     elif doc_type == "TEMPLATE":
-        # CR-032 Gap 5: TEMPLATE supports name-based IDs
+        # CR-034: TEMPLATE requires --name argument
         name = getattr(args, 'name', None)
-        if name:
-            doc_id = f"TEMPLATE-{name.upper()}"
-        else:
-            next_num = get_next_number(doc_type)
-            doc_id = f"{config['prefix']}-{next_num:03d}"
+        if not name:
+            print("""
+Error: TEMPLATE documents require --name argument.
+
+Usage: qms --user {user} create TEMPLATE --name TYPE --title "Title"
+
+Examples:
+  qms --user claude create TEMPLATE --name CR --title "CR Template"
+  qms --user claude create TEMPLATE --name SOP --title "SOP Template"
+""".format(user=user))
+            return 1
+        doc_id = f"TEMPLATE-{name.upper()}"
     else:
         next_num = get_next_number(doc_type)
         doc_id = f"{config['prefix']}-{next_num:03d}"
