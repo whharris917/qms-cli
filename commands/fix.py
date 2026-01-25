@@ -1,9 +1,10 @@
 """
 QMS Fix Command
 
-Administrative fix for EFFECTIVE documents (QA/lead only).
+Administrative fix for EFFECTIVE documents (administrators only).
 
 Created as part of CR-026: QMS CLI Extensibility Refactoring
+Updated CR-036-VAR-001: Changed from hardcoded users to administrator group check
 """
 import re
 import sys
@@ -16,22 +17,23 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from registry import CommandRegistry
 from qms_paths import get_doc_path, get_doc_type
 from qms_io import read_document, write_document
-from qms_auth import get_current_user
+from qms_auth import get_current_user, get_user_group
 from qms_meta import read_meta
 
 
 @CommandRegistry.register(
     name="fix",
-    help="Administrative fix for EFFECTIVE documents (QA/lead only)",
+    help="Administrative fix for EFFECTIVE documents (administrators only)",
     requires_doc_id=True,
     doc_id_help="Document ID to fix",
 )
 def cmd_fix(args) -> int:
-    """Administrative fix for EFFECTIVE documents (QA/lead only)."""
+    """Administrative fix for EFFECTIVE documents (administrators only)."""
     current_user = get_current_user(args)
 
-    if current_user not in {"qa", "lead"}:
-        print("Error: Only QA or lead can run administrative fixes.", file=sys.stderr)
+    user_group = get_user_group(current_user)
+    if user_group != "administrator":
+        print("Error: Only administrators can run administrative fixes.", file=sys.stderr)
         return 1
 
     doc_id = args.doc_id
