@@ -468,3 +468,118 @@ def test_post_approval_rejection(temp_project):
     meta = read_meta(temp_project, "CR-001", "CR")
     assert meta["status"] == "POST_REVIEWED"
     assert meta["version"] == version_before, "Version should not change on rejection"
+
+
+# ============================================================================
+# Test: Checkin Reverts PRE_REVIEWED Status
+# ============================================================================
+
+def test_checkin_reverts_pre_reviewed(temp_project):
+    """
+    Checkin from PRE_REVIEWED status should revert to DRAFT.
+
+    Verifies: REQ-DOC-009 (for executable documents in pre-review phase)
+    """
+    # Create CR and get to PRE_REVIEWED
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Test Pre-Reviewed Revert")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "PRE_REVIEWED"
+
+    # [REQ-DOC-009] Checkout and checkin from PRE_REVIEWED
+    run_qms(temp_project, "claude", "checkout", "CR-001")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+
+    # Verify status reverted to DRAFT
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "DRAFT", "PRE_REVIEWED should revert to DRAFT on checkin"
+
+    # Verify review tracking fields cleared
+    assert meta["pending_assignees"] == [], "pending_assignees should be cleared"
+
+
+# ============================================================================
+# Test: Checkin Reverts POST_REVIEWED Status
+# ============================================================================
+
+def test_checkin_reverts_post_reviewed(temp_project):
+    """
+    Checkin from POST_REVIEWED status should revert to IN_EXECUTION.
+
+    Verifies: REQ-DOC-009 (for executable documents in post-review phase)
+    """
+    # Create CR and get to POST_REVIEWED
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Test Post-Reviewed Revert")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "CR-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "CR-001")
+    run_qms(temp_project, "claude", "release", "CR-001")
+    run_qms(temp_project, "claude", "checkout", "CR-001")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "POST_REVIEWED"
+
+    # [REQ-DOC-009] Checkout and checkin from POST_REVIEWED
+    run_qms(temp_project, "claude", "checkout", "CR-001")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+
+    # Verify status reverted to DRAFT per REQ-DOC-009
+    # (the requirement says REVIEWED/PRE_REVIEWED/POST_REVIEWED all revert to DRAFT)
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "DRAFT", "POST_REVIEWED should revert to DRAFT on checkin per REQ-DOC-009"
+
+    # Verify review tracking fields cleared
+    assert meta["pending_assignees"] == [], "pending_assignees should be cleared"
+
+
+# ============================================================================
+# Test: Terminal State - RETIRED
+# ============================================================================
+
+def test_terminal_state_retired(temp_project):
+    """
+    RETIRED is a terminal state - no transitions allowed.
+
+    Verifies: REQ-WF-011 (for RETIRED terminal state)
+    """
+    # Create SOP and get it to EFFECTIVE, then RETIRED
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Test Retired Terminal")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    run_qms(temp_project, "qa", "review", "SOP-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "SOP-001")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "EFFECTIVE"
+
+    # SOP is now EFFECTIVE - route for retirement (correct workflow)
+    run_qms(temp_project, "claude", "checkout", "SOP-001")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    run_qms(temp_project, "qa", "review", "SOP-001", "--recommend", "--comment", "OK for retirement")
+    # Route for approval with --retire flag
+    run_qms(temp_project, "claude", "route", "SOP-001", "--approval", "--retire")
+    run_qms(temp_project, "qa", "approve", "SOP-001")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "RETIRED"
+
+    # [REQ-WF-011] Attempt operations on RETIRED document - all should fail
+    result = run_qms(temp_project, "claude", "checkout", "SOP-001")
+    assert result.returncode != 0, "Checkout from RETIRED should fail"
+
+    result = run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    assert result.returncode != 0, "Route from RETIRED should fail"
+
+    # Verify status unchanged
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "RETIRED", "Status should remain RETIRED"

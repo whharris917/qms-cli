@@ -99,7 +99,7 @@ def test_sop_full_lifecycle(temp_project):
     Verifies: REQ-DOC-003, REQ-DOC-006, REQ-DOC-007, REQ-DOC-008,
               REQ-WF-002, REQ-WF-006, REQ-META-001, REQ-META-002,
               REQ-AUDIT-001, REQ-AUDIT-002, REQ-AUDIT-003, REQ-AUDIT-004,
-              REQ-TASK-001, REQ-TASK-002, REQ-TASK-003, REQ-TASK-004,
+              REQ-TASK-001, REQ-TASK-002, REQ-TASK-003, REQ-TASK-003,
               REQ-CFG-002, REQ-CFG-003
     """
     # [REQ-DOC-003] [REQ-CFG-002] Create SOP - verify file in QMS/SOP/
@@ -213,7 +213,7 @@ def test_sop_full_lifecycle(temp_project):
     meta = read_meta(temp_project, "SOP-001", "SOP")
     assert meta["status"] == "REVIEWED"
 
-    # [REQ-TASK-004] Verify task removed from inbox
+    # [REQ-TASK-003] Verify task removed from inbox
     assert not task_exists(temp_project, "qa", "SOP-001"), "Task should be removed after review"
 
     # [REQ-WF-002] Route for approval - REVIEWED -> IN_APPROVAL
@@ -506,7 +506,7 @@ def test_rejection_clears_approval_tasks(temp_project):
     """
     Rejection during approval clears all pending approval tasks.
 
-    Verifies: REQ-TASK-004
+    Verifies: REQ-TASK-003
     """
     # Create SOP and get to IN_APPROVAL with multiple approvers
     run_qms(temp_project, "claude", "create", "SOP", "--title", "Rejection Task Clear Test")
@@ -524,7 +524,7 @@ def test_rejection_clears_approval_tasks(temp_project):
     assert "SOP-001" in result_qa.stdout, "qa should have approval task"
     assert "SOP-001" in result_tu.stdout, "tu_ui should have approval task"
 
-    # [REQ-TASK-004] QA rejects - should clear ALL approval tasks
+    # [REQ-TASK-003] QA rejects - should clear ALL approval tasks
     run_qms(temp_project, "qa", "reject", "SOP-001", "--comment", "Needs rework")
 
     # Verify all approval tasks cleared
@@ -542,7 +542,7 @@ def test_assign_command(temp_project):
     """
     Quality group members can add reviewers/approvers after initial routing.
 
-    Verifies: REQ-TASK-005
+    Verifies: REQ-TASK-004
     """
     # Create and route for review
     run_qms(temp_project, "claude", "create", "SOP", "--title", "Assign Command Test")
@@ -552,7 +552,7 @@ def test_assign_command(temp_project):
     meta = read_meta(temp_project, "SOP-001", "SOP")
     initial_assignees = set(meta["pending_assignees"])
 
-    # [REQ-TASK-005] QA assigns additional reviewers
+    # [REQ-TASK-004] QA assigns additional reviewers
     result = run_qms(temp_project, "qa", "assign", "SOP-001", "--assignees", "tu_ui", "tu_scene")
     assert result.returncode == 0, f"Assign command failed: {result.stderr}"
 
@@ -566,3 +566,142 @@ def test_assign_command(temp_project):
     result_tu_scene = run_qms(temp_project, "tu_scene", "inbox")
     assert "SOP-001" in result_tu_ui.stdout, "tu_ui should have review task"
     assert "SOP-001" in result_tu_scene.stdout, "tu_scene should have review task"
+
+
+# ============================================================================
+# Test: Invalid Transitions (Comprehensive)
+# ============================================================================
+
+def test_invalid_transitions_comprehensive(temp_project):
+    """
+    Test multiple invalid status transitions are rejected.
+
+    Verifies: REQ-WF-001
+    """
+    # Create SOP and get to various states
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Invalid Transition Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+
+    # [REQ-WF-001] Test 1: DRAFT -> IN_APPROVAL (skipping review)
+    result = run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+    assert result.returncode != 0, "DRAFT -> IN_APPROVAL should be invalid"
+
+    # Get to IN_REVIEW
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+
+    # [REQ-WF-001] Test 2: IN_REVIEW -> IN_APPROVAL (skipping REVIEWED)
+    result = run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+    assert result.returncode != 0, "IN_REVIEW -> IN_APPROVAL should be invalid"
+
+    # Complete review to get to REVIEWED
+    run_qms(temp_project, "qa", "review", "SOP-001", "--recommend", "--comment", "OK")
+
+    # Get to EFFECTIVE
+    run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "SOP-001")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "EFFECTIVE"
+
+    # [REQ-WF-001] Test 3: EFFECTIVE -> IN_REVIEW (backwards without checkout)
+    # First need to checkout to own it
+    run_qms(temp_project, "claude", "checkout", "SOP-001")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+
+    # Now in DRAFT (v1.1), try invalid transition
+    result = run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+    assert result.returncode != 0, "DRAFT -> IN_APPROVAL should still be invalid"
+
+
+# ============================================================================
+# Test: Audit Immutability
+# ============================================================================
+
+def test_audit_immutability(temp_project):
+    """
+    Verify audit trail is append-only - entries cannot be modified.
+
+    Verifies: REQ-AUDIT-001
+    """
+    # Create document and perform operations
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Audit Immutability Test")
+
+    # [REQ-AUDIT-001] Read initial audit state
+    events_after_create = read_audit(temp_project, "SOP-001", "SOP")
+    initial_count = len(events_after_create)
+    assert initial_count >= 1, "Should have at least CREATE event"
+
+    # Store first event for comparison
+    first_event = events_after_create[0].copy()
+
+    # Perform more operations
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "checkout", "SOP-001")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+
+    # [REQ-AUDIT-001] Verify append-only behavior
+    events_after_more = read_audit(temp_project, "SOP-001", "SOP")
+
+    # Count must only increase
+    assert len(events_after_more) > initial_count, "Audit trail should only grow"
+
+    # First event must be unchanged
+    assert events_after_more[0] == first_event, "Previous audit entries must not be modified"
+
+    # Verify all original events still present and unchanged
+    for i, original_event in enumerate(events_after_create):
+        assert events_after_more[i] == original_event, f"Event {i} should be unchanged"
+
+
+# ============================================================================
+# Test: Required Metadata Fields
+# ============================================================================
+
+def test_metadata_required_fields(temp_project):
+    """
+    Verify all 8 required metadata fields are present.
+
+    Verifies: REQ-META-003
+    """
+    # Create SOP
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Metadata Fields Test")
+
+    # [REQ-META-003] Verify all 8 required fields present
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta is not None, "Metadata should exist"
+
+    # Required fields per REQ-META-003
+    required_fields = [
+        "doc_id",
+        "doc_type",
+        "version",
+        "status",
+        "executable",
+        "responsible_user",
+        "checked_out",
+        "pending_assignees"
+    ]
+
+    for field in required_fields:
+        assert field in meta, f"Required field '{field}' should be present in metadata"
+
+    # Verify field types
+    assert isinstance(meta["doc_id"], str), "doc_id should be string"
+    assert isinstance(meta["doc_type"], str), "doc_type should be string"
+    assert isinstance(meta["version"], str), "version should be string"
+    assert isinstance(meta["status"], str), "status should be string"
+    assert isinstance(meta["executable"], bool), "executable should be boolean"
+    assert meta["responsible_user"] is None or isinstance(meta["responsible_user"], str), \
+        "responsible_user should be string or null"
+    assert isinstance(meta["checked_out"], bool), "checked_out should be boolean"
+    assert isinstance(meta["pending_assignees"], list), "pending_assignees should be array"
+
+    # Verify correct values
+    assert meta["doc_id"] == "SOP-001"
+    assert meta["doc_type"] == "SOP"
+    assert meta["version"] == "0.1"
+    assert meta["status"] == "DRAFT"
+    assert meta["executable"] == False
+    assert meta["responsible_user"] == "claude"
+    assert meta["checked_out"] == True
+    assert meta["pending_assignees"] == []

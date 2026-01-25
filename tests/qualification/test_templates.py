@@ -93,17 +93,28 @@ def test_cr_uses_cr_template(temp_project):
 # Test: Template Location
 # ============================================================================
 
-def test_templates_in_qms_template_directory():
+def test_templates_in_qms_template_directory(temp_project):
     """
     Document templates are stored in QMS/TEMPLATE/.
 
     Verifies: REQ-TEMPLATE-002
     """
-    # Note: This test verifies the convention, not runtime behavior
-    # The actual templates may or may not exist depending on project setup
-    # The requirement states templates SHOULD be in QMS/TEMPLATE/TEMPLATE-{TYPE}.md
-    # This test documents the expected location
-    pass  # Convention test - location verified by documentation
+    # [REQ-TEMPLATE-002] The template directory is created in temp_project by the fixture
+    # The CLI should look for templates in QMS/TEMPLATE/
+    # Verify a document created with known template works (implicit template location test)
+
+    # Create document - if this succeeds with template content, templates are found
+    result = run_qms(temp_project, "claude", "create", "SOP", "--title", "Template Location Test")
+    assert result.returncode == 0
+
+    # Read document and verify it has non-trivial content (came from template)
+    doc_content = read_document(temp_project, "SOP/SOP-001-draft.md")
+    assert doc_content is not None
+    assert len(doc_content) > 100, "Document should have substantial template content"
+
+    # Verify template structure elements are present
+    assert "---" in doc_content, "Should have YAML frontmatter from template"
+    assert "title:" in doc_content, "Should have title field from template"
 
 
 # ============================================================================

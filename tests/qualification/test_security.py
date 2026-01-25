@@ -372,3 +372,144 @@ def test_inbox_isolation(temp_project):
     # [REQ-SEC-008] tu_ui should not see qa's tasks
     result = run_qms(temp_project, "tu_ui", "inbox")
     assert "SOP-001" not in result.stdout, "tu_ui should not see qa's inbox tasks"
+
+
+# ============================================================================
+# Test: Group-Based Authorization - Additional Actions
+# ============================================================================
+
+def test_unauthorized_route(temp_project):
+    """
+    Non-initiators (reviewers) cannot route documents they don't own.
+
+    Verifies: REQ-SEC-002
+    """
+    # Create document as claude
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Route Auth Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+
+    # [REQ-SEC-002] Reviewer cannot route (even aside from not being owner)
+    result = run_qms(temp_project, "tu_ui", "route", "SOP-001", "--review")
+    assert result.returncode != 0, "Reviewer should not be able to route"
+
+
+def test_unauthorized_release(temp_project):
+    """
+    Non-initiators cannot release executable documents.
+
+    Verifies: REQ-SEC-002
+    """
+    # Create CR and get to PRE_APPROVED
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Release Auth Test")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "CR-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "CR-001")
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "PRE_APPROVED"
+
+    # [REQ-SEC-002] Reviewer cannot release
+    result = run_qms(temp_project, "tu_ui", "release", "CR-001")
+    assert result.returncode != 0, "Reviewer should not be able to release"
+
+
+def test_unauthorized_revert(temp_project):
+    """
+    Non-initiators cannot revert executable documents.
+
+    Verifies: REQ-SEC-002
+    """
+    # Create CR and get to POST_REVIEWED (revert requires POST_REVIEWED)
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Revert Auth Test")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "CR-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "CR-001")
+    run_qms(temp_project, "claude", "release", "CR-001")
+    run_qms(temp_project, "claude", "checkout", "CR-001")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "POST_REVIEWED"
+
+    # [REQ-SEC-002] Reviewer cannot revert
+    result = run_qms(temp_project, "tu_ui", "revert", "CR-001", "--reason", "Test revert")
+    assert result.returncode != 0, "Reviewer should not be able to revert"
+
+
+def test_unauthorized_close(temp_project):
+    """
+    Non-initiators cannot close executable documents.
+
+    Verifies: REQ-SEC-002
+    """
+    # Create CR and get to POST_APPROVED
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Close Auth Test")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "CR-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "CR-001")
+    run_qms(temp_project, "claude", "release", "CR-001")
+    run_qms(temp_project, "claude", "checkout", "CR-001")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "CR-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "CR-001")
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "POST_APPROVED"
+
+    # [REQ-SEC-002] Reviewer cannot close
+    result = run_qms(temp_project, "tu_ui", "close", "CR-001")
+    assert result.returncode != 0, "Reviewer should not be able to close"
+
+
+# ============================================================================
+# Test: Owner-Only Revert
+# ============================================================================
+
+def test_owner_only_revert(temp_project):
+    """
+    Only the document owner can revert an executable document.
+
+    Verifies: REQ-SEC-003
+    """
+    # Create CR and get to POST_REVIEWED (revert requires POST_REVIEWED status)
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Owner Revert Test")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "CR-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "CR-001")
+    run_qms(temp_project, "claude", "release", "CR-001")
+    # Get to POST_REVIEWED
+    run_qms(temp_project, "claude", "checkout", "CR-001")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "POST_REVIEWED"
+    assert meta["responsible_user"] == "claude"
+
+    # [REQ-SEC-003] Non-owner (lead, also initiator) cannot revert
+    result = run_qms(temp_project, "lead", "revert", "CR-001", "--reason", "Test revert")
+    assert result.returncode != 0, "Non-owner should not be able to revert"
+
+    # Status should be unchanged
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "POST_REVIEWED"
+
+    # Owner (claude) can revert
+    result = run_qms(temp_project, "claude", "revert", "CR-001", "--reason", "Test revert")
+    assert result.returncode == 0, f"Owner revert failed: {result.stderr}"
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "IN_EXECUTION"

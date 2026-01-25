@@ -365,9 +365,9 @@ def test_sdlc_namespace_registration(temp_project):
     """
     SDLC namespaces can be registered via namespace add command.
 
-    Verifies: REQ-DOC-014
+    Verifies: REQ-DOC-013
     """
-    # [REQ-DOC-014] Register a new namespace
+    # [REQ-DOC-013] Register a new namespace
     result = run_qms(temp_project, "claude", "namespace", "add", "MYPROJ")
     assert result.returncode == 0, f"Namespace add failed: {result.stderr}"
 
@@ -391,9 +391,9 @@ def test_sdlc_namespace_list(temp_project):
     """
     SDLC namespaces can be listed via namespace list command.
 
-    Verifies: REQ-DOC-014
+    Verifies: REQ-DOC-013
     """
-    # [REQ-DOC-014] List namespaces - should show built-in namespaces
+    # [REQ-DOC-013] List namespaces - should show built-in namespaces
     result = run_qms(temp_project, "claude", "namespace", "list")
     assert result.returncode == 0, f"Namespace list failed: {result.stderr}"
 
@@ -410,14 +410,14 @@ def test_sdlc_document_identification(temp_project):
     """
     SDLC documents are identified by SDLC-{NAMESPACE}-{TYPE} pattern.
 
-    Verifies: REQ-DOC-015
+    Verifies: REQ-DOC-014
     """
     # Create SDLC directory structure for FLOW namespace
     (temp_project / "QMS" / "SDLC-FLOW").mkdir(parents=True, exist_ok=True)
     (temp_project / "QMS" / ".meta" / "FLOW-RS").mkdir(parents=True, exist_ok=True)
     (temp_project / "QMS" / ".audit" / "FLOW-RS").mkdir(parents=True, exist_ok=True)
 
-    # [REQ-DOC-015] Create FLOW-RS document
+    # [REQ-DOC-014] Create FLOW-RS document
     result = run_qms(temp_project, "claude", "create", "FLOW-RS",
                      "--title", "Flow Requirements Specification")
     assert result.returncode == 0, f"Create FLOW-RS failed: {result.stderr}"
@@ -439,9 +439,9 @@ def test_folder_per_document_cr(temp_project):
     """
     CR documents use folder-per-document storage pattern.
 
-    Verifies: REQ-DOC-013
+    Verifies: REQ-DOC-012
     """
-    # [REQ-DOC-013] Create CR
+    # [REQ-DOC-012] Create CR
     result = run_qms(temp_project, "claude", "create", "CR", "--title", "Folder Test CR")
     assert result.returncode == 0
 
@@ -456,9 +456,9 @@ def test_folder_per_document_inv(temp_project):
     """
     INV documents use folder-per-document storage pattern.
 
-    Verifies: REQ-DOC-013
+    Verifies: REQ-DOC-012
     """
-    # [REQ-DOC-013] Create INV
+    # [REQ-DOC-012] Create INV
     result = run_qms(temp_project, "claude", "create", "INV", "--title", "Folder Test INV")
     assert result.returncode == 0
 
@@ -473,13 +473,13 @@ def test_child_documents_in_parent_folder(temp_project):
     """
     Child documents (TP, VAR, ER) are stored in parent's folder.
 
-    Verifies: REQ-DOC-013
+    Verifies: REQ-DOC-012
     """
     # Create parent CR
     run_qms(temp_project, "claude", "create", "CR", "--title", "Parent CR")
     run_qms(temp_project, "claude", "checkin", "CR-001")
 
-    # [REQ-DOC-013] Create TP child - should be in CR-001 folder
+    # [REQ-DOC-012] Create TP child - should be in CR-001 folder
     result = run_qms(temp_project, "claude", "create", "TP", "--parent", "CR-001",
                      "--title", "Test Protocol")
     assert result.returncode == 0
@@ -487,3 +487,125 @@ def test_child_documents_in_parent_folder(temp_project):
     cr_folder = temp_project / "QMS" / "CR" / "CR-001"
     assert (cr_folder / "CR-001-TP-001-draft.md").exists(), \
         "TP should be stored in parent CR's folder"
+
+
+# ============================================================================
+# Test: Cancel Restrictions - Checkout Blocked
+# ============================================================================
+
+def test_cancel_blocked_while_checked_out(temp_project):
+    """
+    Cancel is rejected while document is checked out.
+
+    Verifies: REQ-DOC-010
+    """
+    # Create SOP (auto-checked out)
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Cancel Checkout Test")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["checked_out"] == True
+
+    # [REQ-DOC-010] Cancel should be rejected while checked out
+    result = run_qms(temp_project, "claude", "cancel", "SOP-001", "--confirm")
+    assert result.returncode != 0, "Cancel should be rejected while document is checked out"
+
+    # Verify document still exists
+    assert (temp_project / "QMS" / "SOP" / "SOP-001-draft.md").exists()
+
+    # Checkin and then cancel should work
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["checked_out"] == False
+
+    result = run_qms(temp_project, "claude", "cancel", "SOP-001", "--confirm")
+    assert result.returncode == 0, "Cancel should succeed after checkin"
+
+
+# ============================================================================
+# Test: Cancel Cleanup
+# ============================================================================
+
+def test_cancel_cleans_workspace_and_inbox(temp_project):
+    """
+    Cancel removes workspace copies and inbox tasks.
+
+    Verifies: REQ-DOC-010
+    """
+    # Create SOP and get it to IN_REVIEW (creates inbox tasks)
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Cancel Cleanup Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+
+    # Verify task exists in qa's inbox
+    result = run_qms(temp_project, "qa", "inbox")
+    assert "SOP-001" in result.stdout, "Task should be in qa's inbox"
+
+    # Checkout to create workspace copy
+    run_qms(temp_project, "claude", "checkout", "SOP-001")
+    workspace_path = temp_project / ".claude" / "users" / "claude" / "workspace" / "SOP-001.md"
+    assert workspace_path.exists(), "Workspace copy should exist"
+
+    # Checkin before cancel (required)
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+
+    # [REQ-DOC-010] Cancel document
+    result = run_qms(temp_project, "claude", "cancel", "SOP-001", "--confirm")
+    assert result.returncode == 0
+
+    # Verify workspace copy removed (if it existed after checkin - which it shouldn't)
+    assert not workspace_path.exists(), "Workspace copy should not exist after cancel"
+
+    # Verify inbox tasks cleared
+    result = run_qms(temp_project, "qa", "inbox")
+    assert "SOP-001" not in result.stdout, "Inbox tasks should be cleared after cancel"
+
+    # Verify document files removed
+    assert not (temp_project / "QMS" / "SOP" / "SOP-001-draft.md").exists()
+
+
+# ============================================================================
+# Test: Checkout EFFECTIVE Creates Archive
+# ============================================================================
+
+def test_checkout_effective_creates_archive(temp_project):
+    """
+    Checkout of EFFECTIVE document archives current version and creates draft.
+
+    Verifies: REQ-DOC-007
+    """
+    # Create SOP and get to EFFECTIVE
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Checkout Archive Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    run_qms(temp_project, "qa", "review", "SOP-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "SOP-001")
+
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "EFFECTIVE"
+    assert meta["version"] == "1.0"
+
+    # Verify effective document exists, draft doesn't
+    assert (temp_project / "QMS" / "SOP" / "SOP-001.md").exists()
+    assert not (temp_project / "QMS" / "SOP" / "SOP-001-draft.md").exists()
+
+    # [REQ-DOC-007] Checkout EFFECTIVE document
+    result = run_qms(temp_project, "claude", "checkout", "SOP-001")
+    assert result.returncode == 0
+
+    # Verify archive created (v1.0)
+    archive_path = temp_project / "QMS" / ".archive" / "SOP" / "SOP-001-v1.0.md"
+    assert archive_path.exists(), "Archive of v1.0 should be created"
+
+    # Verify new draft created at N.1 version
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["version"] == "1.1", "Version should be incremented to 1.1"
+    assert meta["status"] == "DRAFT", "Status should be DRAFT"
+
+    # Verify draft file exists
+    assert (temp_project / "QMS" / "SOP" / "SOP-001-draft.md").exists()
+
+    # Verify workspace copy created
+    workspace_path = temp_project / ".claude" / "users" / "claude" / "workspace" / "SOP-001.md"
+    assert workspace_path.exists(), "Workspace copy should be created"
