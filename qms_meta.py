@@ -10,16 +10,20 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import date
 
-from qms_paths import QMS_ROOT
+from qms_paths import QMS_ROOT, require_project_root
 
-META_ROOT = QMS_ROOT / ".meta"
+
+def get_meta_root() -> Path:
+    """Get the .meta root directory, ensuring project is initialized."""
+    require_project_root()
+    return QMS_ROOT / ".meta"
 
 
 def get_meta_dir(doc_type: str) -> Path:
     """Get the .meta directory for a document type."""
     # Handle folder-per-doc types (CR, INV, CAPA, TP, ER)
     # and flat types (SOP, RS, DS, CS, RTM, OQ)
-    return META_ROOT / doc_type
+    return get_meta_root() / doc_type
 
 
 def get_meta_path(doc_id: str, doc_type: str) -> Path:

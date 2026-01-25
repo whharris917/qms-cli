@@ -17,7 +17,7 @@ from qms_config import (
 # Project Root Discovery
 # =============================================================================
 
-def find_project_root() -> Path:
+def find_project_root() -> Path | None:
     """
     Find the project root using qms.config.json or QMS/ directory.
 
@@ -25,6 +25,9 @@ def find_project_root() -> Path:
     1. Look for qms.config.json walking up from cwd
     2. If found, use that directory as project root
     3. If not found, fall back to QMS/ directory discovery (backward compatibility)
+
+    Returns:
+        Path to project root, or None if not found (e.g., before init)
     """
     # Primary: config file discovery
     root = get_project_root_from_config()
@@ -44,18 +47,30 @@ def find_project_root() -> Path:
     elif Path("../QMS").is_dir():
         return Path.cwd().parent
 
-    raise FileNotFoundError(
-        "Cannot find project root. Either:\n"
-        "  - Run 'qms init' to initialize a new QMS project, or\n"
-        "  - Ensure you are in a directory with QMS/ or qms.config.json"
-    )
+    # Return None instead of raising - allows init command to work
+    return None
 
 
-# Computed at module load time
+def require_project_root() -> Path:
+    """
+    Get the project root, raising an error if not found.
+
+    Use this in functions that require an initialized project.
+    """
+    if PROJECT_ROOT is None:
+        raise FileNotFoundError(
+            "Cannot find project root. Either:\n"
+            "  - Run 'qms init' to initialize a new QMS project, or\n"
+            "  - Ensure you are in a directory with QMS/ or qms.config.json"
+        )
+    return PROJECT_ROOT
+
+
+# Computed at module load time - may be None before init
 PROJECT_ROOT = find_project_root()
-QMS_ROOT = PROJECT_ROOT / "QMS"
-ARCHIVE_ROOT = QMS_ROOT / ".archive"
-USERS_ROOT = PROJECT_ROOT / ".claude" / "users"
+QMS_ROOT = PROJECT_ROOT / "QMS" if PROJECT_ROOT else None
+ARCHIVE_ROOT = QMS_ROOT / ".archive" if QMS_ROOT else None
+USERS_ROOT = PROJECT_ROOT / ".claude" / "users" if PROJECT_ROOT else None
 
 
 # =============================================================================
@@ -96,6 +111,7 @@ def get_doc_type(doc_id: str) -> str:
 
 def get_doc_path(doc_id: str, draft: bool = False) -> Path:
     """Get the path to a document."""
+    require_project_root()  # Ensure project is initialized
     doc_type = get_doc_type(doc_id)
     all_types = get_all_document_types()
     config = all_types[doc_type]
@@ -128,6 +144,7 @@ def get_doc_path(doc_id: str, draft: bool = False) -> Path:
 
 def get_archive_path(doc_id: str, version: str) -> Path:
     """Get the archive path for a specific version."""
+    require_project_root()  # Ensure project is initialized
     doc_type = get_doc_type(doc_id)
     all_types = get_all_document_types()
     config = all_types[doc_type]
@@ -155,16 +172,19 @@ def get_archive_path(doc_id: str, version: str) -> Path:
 
 def get_workspace_path(user: str, doc_id: str) -> Path:
     """Get the workspace path for a user's checked-out document."""
+    require_project_root()  # Ensure project is initialized
     return USERS_ROOT / user / "workspace" / f"{doc_id}.md"
 
 
 def get_inbox_path(user: str) -> Path:
     """Get the inbox directory for a user."""
+    require_project_root()  # Ensure project is initialized
     return USERS_ROOT / user / "inbox"
 
 
 def get_next_number(doc_type: str) -> int:
     """Get the next available number for a document type."""
+    require_project_root()  # Ensure project is initialized
     all_types = get_all_document_types()
     config = all_types[doc_type]
     base_path = QMS_ROOT / config["path"]
@@ -189,6 +209,7 @@ def get_next_number(doc_type: str) -> int:
 
 def get_next_nested_number(parent_id: str, child_type: str) -> int:
     """Get the next available number for a nested document type (e.g., CR-028-VAR-001)."""
+    require_project_root()  # Ensure project is initialized
     parent_type = get_doc_type(parent_id)
     all_types = get_all_document_types()
     parent_config = all_types[parent_type]

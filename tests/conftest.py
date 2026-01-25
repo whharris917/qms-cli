@@ -42,6 +42,32 @@ def temp_project(tmp_path):
         (users_root / user / "workspace").mkdir(parents=True)
         (users_root / user / "inbox").mkdir(parents=True)
 
+    # Create agent definition files for non-hardcoded users
+    # (claude and lead are hardcoded as administrators, so they don't need agent files)
+    agents_root = tmp_path / ".claude" / "agents"
+    agents_root.mkdir(parents=True, exist_ok=True)
+
+    agent_configs = {
+        "qa": ("qa", "quality"),
+        "tu_ui": ("tu_ui", "reviewer"),
+        "tu_scene": ("tu_scene", "reviewer"),
+        "tu_sketch": ("tu_sketch", "reviewer"),
+        "tu_sim": ("tu_sim", "reviewer"),
+        "bu": ("bu", "reviewer"),
+    }
+
+    for username, (name, group) in agent_configs.items():
+        agent_file = agents_root / f"{username}.md"
+        agent_file.write_text(f'''---
+name: {name}
+group: {group}
+---
+
+# {name.upper()} Agent
+
+Test agent for qualification tests.
+''', encoding="utf-8")
+
     return tmp_path
 
 

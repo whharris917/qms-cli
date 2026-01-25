@@ -10,9 +10,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
-from qms_paths import QMS_ROOT
+from qms_paths import QMS_ROOT, require_project_root
 
-AUDIT_ROOT = QMS_ROOT / ".audit"
+
+def get_audit_root() -> Path:
+    """Get the .audit root directory, ensuring project is initialized."""
+    require_project_root()
+    return QMS_ROOT / ".audit"
 
 
 # Event types
@@ -34,7 +38,7 @@ EVENT_STATUS_CHANGE = "STATUS_CHANGE"
 
 def get_audit_dir(doc_type: str) -> Path:
     """Get the .audit directory for a document type."""
-    return AUDIT_ROOT / doc_type
+    return get_audit_root() / doc_type
 
 
 def get_audit_path(doc_id: str, doc_type: str) -> Path:
