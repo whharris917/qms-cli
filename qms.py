@@ -181,6 +181,12 @@ Valid users:
     p_init = subparsers.add_parser("init", help="Initialize a new QMS project")
     p_init.add_argument("--root", help="Project root directory (default: current directory)")
 
+    # user (CR-036)
+    p_user = subparsers.add_parser("user", help="Manage QMS users")
+    p_user.add_argument("--add", help="Username to add")
+    p_user.add_argument("--group", help="Group for new user (administrator, initiator, quality, reviewer)")
+    p_user.add_argument("--list", action="store_true", help="List all users")
+
     args = parser.parse_args()
 
     if not args.command:
