@@ -31,3 +31,4 @@ from . import comments
 from . import migrate
 from . import verify_migration
 from . import namespace
+from . import init

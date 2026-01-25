@@ -66,9 +66,9 @@ Valid users:
         """
     )
 
-    # Global --user argument (required for most commands)
-    parser.add_argument("--user", "-u", required=True,
-                        help="Your QMS identity (required)")
+    # Global --user argument (required for most commands, optional for init)
+    parser.add_argument("--user", "-u",
+                        help="Your QMS identity (required for most commands)")
 
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
@@ -176,6 +176,10 @@ Valid users:
     p_namespace = subparsers.add_parser("namespace", help="Manage SDLC namespaces")
     p_namespace.add_argument("action", nargs="?", default="list", help="Action: list, add")
     p_namespace.add_argument("name", nargs="?", help="Namespace name (for add)")
+
+    # init (CR-036)
+    p_init = subparsers.add_parser("init", help="Initialize a new QMS project")
+    p_init.add_argument("--root", help="Project root directory (default: current directory)")
 
     args = parser.parse_args()
 
