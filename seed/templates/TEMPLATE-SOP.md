@@ -1,6 +1,6 @@
 ---
 title: 'Standard Operating Procedure Template'
-revision_summary: 'CR-017: Initial migration to QMS control'
+revision_summary: Initial release
 ---
 
 <!--
@@ -20,7 +20,7 @@ When creating an SOP from this template, copy from the EXAMPLE FRONTMATTER onwar
 
 ---
 title: '{{TITLE}}'
-revision_summary: 'Initial creation'
+revision_summary: Initial release
 ---
 
 <!--

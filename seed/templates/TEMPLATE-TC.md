@@ -1,6 +1,6 @@
 ---
 title: 'Test Case Template'
-revision_summary: 'CR-017: Initial migration to QMS control'
+revision_summary: Initial release
 ---
 
 <!--

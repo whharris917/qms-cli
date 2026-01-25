@@ -1,6 +1,6 @@
 ---
 title: 'Exception Report Template'
-revision_summary: 'CR-017: Initial migration to QMS control'
+revision_summary: Initial release
 ---
 
 <!--
@@ -20,7 +20,7 @@ When creating an ER from this template, copy from the EXAMPLE FRONTMATTER onward
 
 ---
 title: '{{TITLE}}'
-revision_summary: 'Initial draft'
+revision_summary: Initial release
 ---
 
 <!--
