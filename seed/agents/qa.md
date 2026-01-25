@@ -43,5 +43,5 @@ python qms-cli/qms.py --user qa approve DOC-ID
 
 Assign reviewers:
 ```
-python qms-cli/qms.py --user qa assign DOC-ID --assignees reviewer1 reviewer2
+python qms-cli/qms.py --user qa assign DOC-ID --assignees alice bob
 ```

@@ -84,8 +84,10 @@ This creates `.claude/agents/alice.md` with the specified group and sets up work
 |-------|--------------|
 | **administrator** | All capabilities (create, route, assign, review, approve, manage users) |
 | **initiator** | Create, checkout, checkin, route, release, close |
-| **quality** | Assign reviewers, review, approve, reject, fix |
+| **quality** | Assign reviewers, review, approve, reject |
 | **reviewer** | Review, approve, reject (when assigned) |
+
+Note: The `fix` command is restricted to specific users (`qa` and `lead`) rather than being group-based.
 
 ## Commands
 
@@ -110,14 +112,14 @@ qms --user claude read SOP-001 --version 1.0      # Archived version
 
 ### Workflow Routing
 
-**Non-executable documents (SOP, RS, DS, CS, RTM, OQ):**
+**Non-executable documents (SOP, RS, RTM):**
 
 ```bash
 qms --user claude route SOP-001 --review      # Route for review (QA auto-assigned)
 qms --user claude route SOP-001 --approval    # Route for approval (after REVIEWED)
 ```
 
-**Executable documents (CR, INV, CAPA, TP, ER):**
+**Executable documents (CR, INV, TP, ER, VAR):**
 
 ```bash
 qms --user claude route CR-001 --review      # Routes to pre-review (from DRAFT)
@@ -135,14 +137,14 @@ The CLI automatically infers pre/post phase from the document's current status.
 ```bash
 # Submit review (must specify outcome)
 qms --user qa review SOP-001 --recommend --comment "Approved. No issues."
-qms --user tu_ui review SOP-001 --request-updates --comment "Section 3 needs work."
+qms --user alice review SOP-001 --request-updates --comment "Section 3 needs work."
 
 # Approve or reject
 qms --user qa approve SOP-001
 qms --user qa reject SOP-001 --comment "Does not meet requirements."
 
 # QA: Assign additional reviewers
-qms --user qa assign SOP-001 --assignees tu_ui tu_scene
+qms --user qa assign SOP-001 --assignees alice bob
 ```
 
 ### Status & Tasks
@@ -167,10 +169,11 @@ qms --user qa fix SOP-001
 | SOP | No | Standard Operating Procedure |
 | CR | Yes | Change Record |
 | INV | Yes | Investigation |
-| CAPA | Yes | Corrective/Preventive Action (child of INV) |
 | TP | Yes | Test Protocol (child of CR) |
 | ER | Yes | Exception Report (child of TP) |
-| RS, DS, CS, RTM, OQ | No | SDLC documents (singletons) |
+| VAR | Yes | Variance Report (child of CR or INV) |
+| RS, RTM | No | SDLC documents (per registered namespace) |
+| TEMPLATE | No | Document templates |
 
 ## Workflows
 
@@ -275,18 +278,18 @@ qms --user claude checkin CR-001
 qms --user claude route CR-001 --review       # -> IN_PRE_REVIEW (from DRAFT)
 
 # QA assigns technical reviewer and reviews
-qms --user qa assign CR-001 --assignees tu_ui
+qms --user qa assign CR-001 --assignees alice
 qms --user qa review CR-001 --recommend --comment "Approach is sound."
 
-# TU-UI reviews
-qms --user tu_ui review CR-001 --recommend --comment "UI changes approved."
+# Technical reviewer reviews
+qms --user alice review CR-001 --recommend --comment "Technical changes approved."
 
 # Route for pre-approval
 qms --user claude route CR-001 --approval     # -> IN_PRE_APPROVAL (from PRE_REVIEWED)
 
 # Approvals
 qms --user qa approve CR-001
-qms --user tu_ui approve CR-001
+qms --user alice approve CR-001
 
 # Execute the change
 qms --user claude release CR-001
