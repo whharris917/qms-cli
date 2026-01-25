@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from qms_config import (
-    VALID_USERS, USER_GROUPS, PERMISSIONS, GROUP_GUIDANCE, GROUP_HIERARCHY
+    PERMISSIONS, GROUP_GUIDANCE, GROUP_HIERARCHY
 )
 
 
@@ -90,8 +90,7 @@ def get_user_group(user: str) -> str:
     Resolution order:
     1. Hardcoded admins (lead, claude) -> administrator
     2. Agent file with group: frontmatter -> that group
-    3. Legacy VALID_USERS/USER_GROUPS lookup (backward compatibility)
-    4. Unknown -> "unknown"
+    3. Unknown -> "unknown"
     """
     # 1. Hardcoded administrators
     if user in HARDCODED_ADMINS:
@@ -102,11 +101,6 @@ def get_user_group(user: str) -> str:
     if agent_group:
         return agent_group
 
-    # 3. Legacy lookup (backward compatibility with existing projects)
-    for group_name, members in USER_GROUPS.items():
-        if user in members:
-            return group_name
-
     return "unknown"
 
 
@@ -116,8 +110,7 @@ def verify_user_identity(user: str) -> bool:
 
     A user is valid if:
     1. They are a hardcoded admin (lead, claude), or
-    2. They have an agent file with a valid group, or
-    3. They are in the legacy VALID_USERS set (backward compatibility)
+    2. They have an agent file with a valid group
     """
     # Hardcoded admins are always valid
     if user in HARDCODED_ADMINS:
@@ -138,10 +131,6 @@ Valid groups: administrator, initiator, quality, reviewer
 Check .claude/agents/{user}.md and ensure the 'group:' frontmatter is valid.
 """)
             return False
-
-    # Legacy lookup (backward compatibility)
-    if user in VALID_USERS:
-        return True
 
     # User not found - provide helpful error
     agent_path = get_agent_file_path(user)
