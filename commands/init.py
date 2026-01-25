@@ -6,6 +6,7 @@ Initializes a new QMS project with all required infrastructure.
 Created as part of CR-036: Add qms-cli initialization and bootstrapping functionality
 """
 import json
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
 from qms_config import CONFIG_FILE
+
+
+# =============================================================================
+# Seed Directory Location
+# =============================================================================
+
+def get_seed_dir() -> Path:
+    """Get the seed directory path (relative to qms-cli installation)."""
+    # seed/ is in the same directory as this file's parent (qms-cli/)
+    return Path(__file__).parent.parent / "seed"
 
 
 # =============================================================================
@@ -77,7 +88,11 @@ def create_qms_structure(root: Path) -> None:
     # Create main directories
     directories = [
         qms_root / ".meta",
+        qms_root / ".meta" / "SOP",
+        qms_root / ".meta" / "TEMPLATE",
         qms_root / ".audit",
+        qms_root / ".audit" / "SOP",
+        qms_root / ".audit" / "TEMPLATE",
         qms_root / ".archive",
         qms_root / "SOP",
         qms_root / "CR",
@@ -87,7 +102,8 @@ def create_qms_structure(root: Path) -> None:
 
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
-        print(f"  Created: {directory}")
+
+    print(f"  Created: {qms_root} (with subdirectories)")
 
 
 def create_user_workspaces(root: Path) -> None:
@@ -108,65 +124,136 @@ def create_user_workspaces(root: Path) -> None:
         print(f"  Created: {inbox}")
 
 
-def create_default_agent(root: Path) -> None:
-    """Create default qa agent definition file."""
-    agents_dir = root / ".claude" / "agents"
-    agents_dir.mkdir(parents=True, exist_ok=True)
+# =============================================================================
+# Seeding Functions
+# =============================================================================
 
-    qa_agent_path = agents_dir / "qa.md"
-    qa_content = """---
-name: qa
-group: quality
-description: Quality Assurance Representative
----
+def create_meta_file(meta_dir: Path, doc_id: str, doc_type: str, executable: bool = False) -> None:
+    """Create a .meta JSON file for a seeded document."""
+    meta = {
+        "doc_id": doc_id,
+        "doc_type": doc_type,
+        "version": "1.0",
+        "status": "EFFECTIVE",
+        "executable": executable,
+        "responsible_user": None,
+        "checked_out": False,
+        "checked_out_date": None,
+        "effective_version": "1.0",
+        "supersedes": None,
+        "pending_assignees": [],
+        "pending_reviewers": [],
+        "completed_reviewers": [],
+        "review_outcomes": {},
+        "approval_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    }
 
-# QA Agent
+    meta_path = meta_dir / f"{doc_id}.json"
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
 
-You are the Quality Assurance (QA) representative for this QMS project.
 
-## Responsibilities
+def create_audit_file(audit_dir: Path, doc_id: str) -> None:
+    """Create an initial audit trail for a seeded document."""
+    audit_path = audit_dir / f"{doc_id}.jsonl"
 
-- Review all documents for procedural compliance
-- Assign Technical Units (TUs) to review documents based on affected domains
-- Serve as mandatory reviewer/approver for all controlled documents
-- Verify that document workflows follow SOP-001 and SOP-002
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "action": "seed",
+        "user": "system",
+        "details": {
+            "message": "Document seeded during QMS initialization",
+            "version": "1.0",
+            "status": "EFFECTIVE"
+        }
+    }
 
-## Review Criteria
+    with open(audit_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
 
-When reviewing documents, verify:
-1. Frontmatter is complete (title, revision_summary)
-2. All required sections are present per the document type's SOP
-3. Content is clear, accurate, and complete
-4. Changes are traceable to authorizing documents (CRs, INVs)
 
-## Commands
+def seed_sops(root: Path) -> int:
+    """Copy seed SOPs to QMS/SOP/ with metadata."""
+    seed_dir = get_seed_dir()
+    sops_src = seed_dir / "sops"
+    sops_dst = root / "QMS" / "SOP"
+    meta_dir = root / "QMS" / ".meta" / "SOP"
+    audit_dir = root / "QMS" / ".audit" / "SOP"
 
-Check your inbox:
-```
-python qms-cli/qms.py --user qa inbox
-```
+    if not sops_src.exists():
+        print(f"  Warning: Seed SOPs not found at {sops_src}")
+        return 0
 
-Review a document:
-```
-python qms-cli/qms.py --user qa review DOC-ID --recommend --comment "..."
-python qms-cli/qms.py --user qa review DOC-ID --request-updates --comment "..."
-```
+    count = 0
+    for sop_file in sorted(sops_src.glob("SOP-*.md")):
+        # Copy document
+        dst_path = sops_dst / sop_file.name
+        shutil.copy2(sop_file, dst_path)
 
-Approve a document:
-```
-python qms-cli/qms.py --user qa approve DOC-ID
-```
+        # Extract doc_id from filename (e.g., SOP-001.md -> SOP-001)
+        doc_id = sop_file.stem
 
-Assign reviewers:
-```
-python qms-cli/qms.py --user qa assign DOC-ID --assignees tu_ui tu_scene
-```
-"""
+        # Create metadata
+        create_meta_file(meta_dir, doc_id, "SOP", executable=False)
+        create_audit_file(audit_dir, doc_id)
 
-    with open(qa_agent_path, "w", encoding="utf-8") as f:
-        f.write(qa_content)
+        count += 1
 
-    print(f"  Created: {qa_agent_path}")
+    print(f"  Seeded: {count} SOPs")
+    return count
+
+
+def seed_templates(root: Path) -> int:
+    """Copy seed templates to QMS/TEMPLATE/ with metadata."""
+    seed_dir = get_seed_dir()
+    templates_src = seed_dir / "templates"
+    templates_dst = root / "QMS" / "TEMPLATE"
+    meta_dir = root / "QMS" / ".meta" / "TEMPLATE"
+    audit_dir = root / "QMS" / ".audit" / "TEMPLATE"
+
+    if not templates_src.exists():
+        print(f"  Warning: Seed templates not found at {templates_src}")
+        return 0
+
+    count = 0
+    for template_file in sorted(templates_src.glob("TEMPLATE-*.md")):
+        # Copy document
+        dst_path = templates_dst / template_file.name
+        shutil.copy2(template_file, dst_path)
+
+        # Extract doc_id from filename (e.g., TEMPLATE-CR.md -> TEMPLATE-CR)
+        doc_id = template_file.stem
+
+        # Create metadata
+        create_meta_file(meta_dir, doc_id, "TEMPLATE", executable=False)
+        create_audit_file(audit_dir, doc_id)
+
+        count += 1
+
+    print(f"  Seeded: {count} templates")
+    return count
+
+
+def seed_agents(root: Path) -> int:
+    """Copy seed agent definitions to .claude/agents/."""
+    seed_dir = get_seed_dir()
+    agents_src = seed_dir / "agents"
+    agents_dst = root / ".claude" / "agents"
+
+    if not agents_src.exists():
+        print(f"  Warning: Seed agents not found at {agents_src}")
+        return 0
+
+    agents_dst.mkdir(parents=True, exist_ok=True)
+
+    count = 0
+    for agent_file in sorted(agents_src.glob("*.md")):
+        dst_path = agents_dst / agent_file.name
+        shutil.copy2(agent_file, dst_path)
+        count += 1
+
+    print(f"  Seeded: {count} agent definition(s)")
+    return count
 
 
 # =============================================================================
@@ -224,17 +311,28 @@ def cmd_init(args) -> int:
         create_config_file(root)
         create_qms_structure(root)
         create_user_workspaces(root)
-        create_default_agent(root)
     except Exception as e:
         print(f"\nERROR: Failed to create infrastructure: {e}")
+        return 1
+
+    # Seed documents
+    print()
+    print("Seeding documents...")
+
+    try:
+        seed_sops(root)
+        seed_templates(root)
+        seed_agents(root)
+    except Exception as e:
+        print(f"\nERROR: Failed to seed documents: {e}")
         return 1
 
     print()
     print("QMS project initialized successfully!")
     print()
     print("Next steps:")
-    print("  1. SOPs will be seeded automatically (or run 'qms seed' if needed)")
+    print("  1. Review seeded SOPs in QMS/SOP/")
     print("  2. Create your first document: python qms-cli/qms.py --user claude create CR --title \"My Change\"")
-    print("  3. Check status: python qms-cli/qms.py --user claude inbox")
+    print("  3. Check your inbox: python qms-cli/qms.py --user claude inbox")
 
     return 0
