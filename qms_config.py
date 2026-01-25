@@ -3,7 +3,73 @@ QMS CLI Configuration Module
 
 Contains constants, enums, and configuration data for the QMS CLI.
 """
+import json
 from enum import Enum
+from pathlib import Path
+
+
+# =============================================================================
+# Config File Discovery
+# =============================================================================
+
+CONFIG_FILE = "qms.config.json"
+
+
+def find_config_file(start_path: Path = None) -> Path | None:
+    """
+    Find qms.config.json by walking up from start_path.
+
+    Args:
+        start_path: Starting directory (defaults to cwd)
+
+    Returns:
+        Path to qms.config.json if found, None otherwise
+    """
+    current = start_path or Path.cwd()
+    current = current.resolve()
+
+    while current != current.parent:
+        config_path = current / CONFIG_FILE
+        if config_path.is_file():
+            return config_path
+        current = current.parent
+
+    # Check root
+    config_path = current / CONFIG_FILE
+    if config_path.is_file():
+        return config_path
+
+    return None
+
+
+def load_config(config_path: Path) -> dict:
+    """
+    Load and parse a qms.config.json file.
+
+    Args:
+        config_path: Path to the config file
+
+    Returns:
+        Parsed config dictionary
+    """
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_project_root_from_config(start_path: Path = None) -> Path | None:
+    """
+    Get project root by finding qms.config.json.
+
+    Args:
+        start_path: Starting directory (defaults to cwd)
+
+    Returns:
+        Project root path if config found, None otherwise
+    """
+    config_path = find_config_file(start_path)
+    if config_path:
+        return config_path.parent
+    return None
 
 
 # =============================================================================

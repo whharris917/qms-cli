@@ -7,7 +7,10 @@ and other filesystem locations within the QMS structure.
 import re
 from pathlib import Path
 
-from qms_config import DOCUMENT_TYPES, SDLC_NAMESPACES, get_all_document_types, get_all_sdlc_namespaces
+from qms_config import (
+    DOCUMENT_TYPES, SDLC_NAMESPACES, get_all_document_types, get_all_sdlc_namespaces,
+    get_project_root_from_config
+)
 
 
 # =============================================================================
@@ -15,18 +18,37 @@ from qms_config import DOCUMENT_TYPES, SDLC_NAMESPACES, get_all_document_types, 
 # =============================================================================
 
 def find_project_root() -> Path:
-    """Find the project root by looking for QMS/ directory."""
+    """
+    Find the project root using qms.config.json or QMS/ directory.
+
+    Discovery algorithm:
+    1. Look for qms.config.json walking up from cwd
+    2. If found, use that directory as project root
+    3. If not found, fall back to QMS/ directory discovery (backward compatibility)
+    """
+    # Primary: config file discovery
+    root = get_project_root_from_config()
+    if root:
+        return root
+
+    # Fallback: QMS/ directory discovery (backward compatibility)
     current = Path.cwd()
     while current != current.parent:
         if (current / "QMS").is_dir():
             return current
         current = current.parent
-    # Fallback: assume we're in project root or .claude/
+
+    # Last resort: check immediate paths
     if Path("QMS").is_dir():
         return Path.cwd()
     elif Path("../QMS").is_dir():
         return Path.cwd().parent
-    raise FileNotFoundError("Cannot find QMS/ directory. Are you in the project?")
+
+    raise FileNotFoundError(
+        "Cannot find project root. Either:\n"
+        "  - Run 'qms init' to initialize a new QMS project, or\n"
+        "  - Ensure you are in a directory with QMS/ or qms.config.json"
+    )
 
 
 # Computed at module load time
