@@ -91,7 +91,7 @@ def create_user_directories(users_dir: Path, username: str) -> tuple[Path, Path]
 
 @CommandRegistry.register(
     name="user",
-    help="Manage QMS users",
+    help="Manage QMS users (administrator only)",
     arguments=[
         {"flags": ["--add"], "help": "Username to add"},
         {"flags": ["--group"], "help": "Group for new user (administrator, initiator, quality, reviewer)"},
@@ -100,14 +100,34 @@ def create_user_directories(users_dir: Path, username: str) -> tuple[Path, Path]
 )
 def cmd_user(args) -> int:
     """
-    Manage QMS users.
+    Manage QMS users (administrator only).
 
     Add a new user:
-        qms user --add alice --group reviewer
+        qms --user lead user --add alice --group reviewer
 
     List users:
-        qms user --list
+        qms --user lead user --list
     """
+    from qms_auth import get_current_user, verify_user_identity, get_user_group
+
+    # Require --user and verify identity
+    user = get_current_user(args)  # Exits if --user not provided
+    if not verify_user_identity(user):
+        return 1
+
+    # Verify administrator permission
+    user_group = get_user_group(user)
+    if user_group != "administrator":
+        print(f"""
+Error: Permission denied.
+
+The 'user' command requires administrator privileges.
+Your role: {user_group} ({user})
+
+Only administrators (lead, claude) can manage users.
+""")
+        return 1
+
     # Handle --list
     if getattr(args, 'list', False):
         return list_users()
@@ -120,8 +140,8 @@ def cmd_user(args) -> int:
 
     # No action specified
     print("Usage:")
-    print("  qms user --add <username> --group <group>  Add a new user")
-    print("  qms user --list                            List all users")
+    print("  qms --user <admin> user --add <username> --group <group>  Add a new user")
+    print("  qms --user <admin> user --list                            List all users")
     print()
     print("Valid groups: administrator, initiator, quality, reviewer")
     return 1
