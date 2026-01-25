@@ -1,10 +1,51 @@
 # QMS CLI - Quality Management System
 
-Document control system for the Flow State project. See **SOP-001** for complete procedural documentation.
+A GMP-inspired document control system for software projects. See **SOP-001** for complete procedural documentation.
+
+## Quick Start
+
+### Initialize a New Project
+
+```bash
+# Clone qms-cli into your project
+cd my-project
+git clone https://github.com/whharris917/qms-cli.git
+
+# Initialize QMS infrastructure
+python qms-cli/qms.py init
+```
+
+This creates:
+- `qms.config.json` - Project root marker
+- `QMS/` - Document storage (SOPs, CRs, templates)
+- `.claude/users/` - User workspaces and inboxes
+- `.claude/agents/qa.md` - Default QA agent
+
+### Project Structure
+
+```
+my-project/                     # Your project root
+├── qms-cli/                    # QMS CLI tool (cloned repo)
+├── qms.config.json             # Project marker (created by init)
+├── QMS/                        # Controlled documents
+│   ├── SOP/                    # Standard Operating Procedures
+│   ├── CR/                     # Change Records
+│   ├── INV/                    # Investigations
+│   ├── TEMPLATE/               # Document templates
+│   ├── .meta/                  # Workflow metadata (managed by CLI)
+│   ├── .audit/                 # Audit trails (append-only)
+│   └── .archive/               # Historical versions
+├── .claude/
+│   ├── users/                  # User workspaces and inboxes
+│   └── agents/                 # Agent definition files
+└── src/                        # Your application code
+```
+
+**Important:** Keep `qms-cli/` as a separate directory from your QMS documents. Do not run `init` inside the `qms-cli/` directory.
 
 ## Usage
 
-All commands require the `--user` (or `-u`) flag to identify yourself:
+Most commands require the `--user` (or `-u`) flag to identify yourself:
 
 ```bash
 python qms-cli/qms.py --user <username> <command> [options]
@@ -17,13 +58,34 @@ alias qms='python qms-cli/qms.py'
 qms --user claude <command> [options]
 ```
 
-## User Groups & Permissions
+## User Management
 
-| Group | Members | Capabilities |
-|-------|---------|--------------|
-| **Initiators** | lead, claude | Create, checkout, checkin, route, release, close |
-| **QA** | qa | Assign reviewers, review, approve, reject, fix |
-| **Reviewers** | tu_ui, tu_scene, tu_sketch, tu_sim, bu | Review, approve, reject (when assigned) |
+### Built-in Administrators
+
+The users `lead` and `claude` are hardcoded as administrators. They work without agent files.
+
+### Adding Users
+
+Other users are defined via agent files in `.claude/agents/`:
+
+```bash
+# Add a new user (requires administrator privileges)
+qms --user lead user --add alice --group reviewer
+
+# List all users
+qms --user lead user --list
+```
+
+This creates `.claude/agents/alice.md` with the specified group and sets up workspace/inbox directories.
+
+### User Groups & Permissions
+
+| Group | Capabilities |
+|-------|--------------|
+| **administrator** | All capabilities (create, route, assign, review, approve, manage users) |
+| **initiator** | Create, checkout, checkin, route, release, close |
+| **quality** | Assign reviewers, review, approve, reject, fix |
+| **reviewer** | Review, approve, reject (when assigned) |
 
 ## Commands
 
@@ -146,21 +208,29 @@ Reviews require an explicit outcome:
 ## Directory Structure
 
 ```
-QMS/
-├── SOP/                    # Effective SOPs
-├── CR/                     # Change Records (folder per CR)
-│   └── CR-001/
-├── INV/                    # Investigations
-└── .archive/               # Historical versions
-    └── SOP/
-        └── SOP-001-v1.0.md
-
-.claude/users/
-├── claude/
-│   ├── workspace/          # Checked-out documents
-│   └── inbox/              # Pending tasks
-├── qa/
-└── ...
+my-project/
+├── qms-cli/                    # QMS CLI tool
+├── qms.config.json             # Project root marker
+├── QMS/
+│   ├── SOP/                    # Effective SOPs
+│   ├── CR/                     # Change Records (folder per CR)
+│   │   └── CR-001/
+│   ├── INV/                    # Investigations
+│   ├── TEMPLATE/               # Document templates
+│   ├── .meta/                  # Workflow state (JSON, managed by CLI)
+│   ├── .audit/                 # Audit trails (JSONL, append-only)
+│   └── .archive/               # Historical versions
+│       └── SOP/
+│           └── SOP-001-v1.0.md
+└── .claude/
+    ├── users/
+    │   ├── claude/
+    │   │   ├── workspace/      # Checked-out documents
+    │   │   └── inbox/          # Pending tasks
+    │   └── qa/
+    └── agents/                 # User definitions
+        ├── qa.md               # group: quality
+        └── alice.md            # group: reviewer
 ```
 
 ## Version Numbering
