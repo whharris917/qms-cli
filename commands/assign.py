@@ -8,6 +8,8 @@ Created as part of CR-026: QMS CLI Extensibility Refactoring
 import sys
 from pathlib import Path
 
+import yaml
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -17,6 +19,7 @@ from qms_paths import get_doc_type, get_doc_path, get_inbox_path
 from qms_auth import get_current_user, check_permission, verify_user_identity
 from qms_templates import generate_review_task_content, generate_approval_task_content
 from qms_meta import read_meta, write_meta
+from qms_audit import log_assign
 
 
 @CommandRegistry.register(
@@ -89,6 +92,18 @@ Check the document status: qms --user {user} status {doc_id}
     version = meta.get("version", "0.1")
     pending_assignees = meta.get("pending_assignees", [])
 
+    # CR-036-VAR-005: Read document title from frontmatter
+    doc_title = ""
+    try:
+        content = draft_path.read_text(encoding="utf-8")
+        if content.startswith("---"):
+            end_idx = content.find("---", 3)
+            if end_idx > 0:
+                frontmatter = yaml.safe_load(content[3:end_idx])
+                doc_title = frontmatter.get("title", "") if frontmatter else ""
+    except (IOError, yaml.YAMLError):
+        pass
+
     # Determine if we're in a review or approval workflow
     review_statuses = [Status.IN_REVIEW, Status.IN_PRE_REVIEW, Status.IN_POST_REVIEW]
     approval_statuses = [Status.IN_APPROVAL, Status.IN_PRE_APPROVAL, Status.IN_POST_APPROVAL]
@@ -134,6 +149,7 @@ Check the document status: qms --user {user} status {doc_id}
 
             # Generate enhanced task content
             # CR-027: Pass doc_type for prompt customization
+            # CR-036-VAR-005: Pass title, status, responsible_user
             if task_type == "REVIEW":
                 task_content = generate_review_task_content(
                     doc_id=doc_id,
@@ -142,7 +158,10 @@ Check the document status: qms --user {user} status {doc_id}
                     assignee=new_user,
                     assigned_by=user,
                     task_id=task_id,
-                    doc_type=doc_type
+                    doc_type=doc_type,
+                    title=doc_title,
+                    status=current_status.value,
+                    responsible_user=meta.get("responsible_user", "")
                 )
             else:
                 task_content = generate_approval_task_content(
@@ -152,7 +171,10 @@ Check the document status: qms --user {user} status {doc_id}
                     assignee=new_user,
                     assigned_by=user,
                     task_id=task_id,
-                    doc_type=doc_type
+                    doc_type=doc_type,
+                    title=doc_title,
+                    status=current_status.value,
+                    responsible_user=meta.get("responsible_user", "")
                 )
 
             task_path.write_text(task_content, encoding="utf-8")
@@ -161,6 +183,8 @@ Check the document status: qms --user {user} status {doc_id}
         # Update .meta with new pending_assignees
         meta["pending_assignees"] = pending_assignees
         write_meta(doc_id, doc_type, meta)
+        # Log ASSIGN event to audit trail (CR-036-VAR-005)
+        log_assign(doc_id, doc_type, user, version, added)
         print(f"Assigned to {doc_id} ({workflow_name}): {', '.join(added)}")
     else:
         print("No new users assigned (all already in workflow)")

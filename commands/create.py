@@ -55,12 +55,15 @@ def cmd_create(args) -> int:
 
     config = all_types[doc_type]
 
-    # Handle parent document requirement for VAR and TP types (CR-032 Gap 3)
+    # Handle parent document requirement for VAR, TP, and ER types (CR-032 Gap 3, CR-036-VAR-005)
     parent_id = getattr(args, 'parent', None)
-    if doc_type in ("VAR", "TP"):
+    if doc_type in ("VAR", "TP", "ER"):
         if not parent_id:
             print(f"Error: {doc_type} documents require --parent flag")
-            print(f"Usage: qms create {doc_type} --parent CR-001 --title \"...\"")
+            if doc_type == "ER":
+                print(f"Usage: qms create {doc_type} --parent CR-001-TP-001 --title \"...\"")
+            else:
+                print(f"Usage: qms create {doc_type} --parent CR-001 --title \"...\"")
             return 1
         # Validate parent exists and is correct type
         try:
@@ -68,6 +71,10 @@ def cmd_create(args) -> int:
             # TP must have CR parent
             if doc_type == "TP" and parent_type != "CR":
                 print("Error: TP documents must have a CR parent")
+                return 1
+            # ER must have TP parent (CR-036-VAR-005)
+            if doc_type == "ER" and parent_type != "TP":
+                print("Error: ER documents must have a TP parent")
                 return 1
             parent_path = get_doc_path(parent_id)
             parent_draft = get_doc_path(parent_id, draft=True)
@@ -89,6 +96,10 @@ def cmd_create(args) -> int:
         # Nested document: CR-028-VAR-001
         next_num = get_next_nested_number(parent_id, "VAR")
         doc_id = f"{parent_id}-VAR-{next_num:03d}"
+    elif doc_type == "ER" and parent_id:
+        # ER nested under TP: CR-001-TP-001-ER-001 (CR-036-VAR-005)
+        next_num = get_next_nested_number(parent_id, "ER")
+        doc_id = f"{parent_id}-ER-{next_num:03d}"
     elif doc_type == "TEMPLATE":
         # CR-034: TEMPLATE requires --name argument
         name = getattr(args, 'name', None)

@@ -25,6 +25,7 @@ EVENT_CHECKOUT = "CHECKOUT"
 EVENT_CHECKIN = "CHECKIN"
 EVENT_ROUTE_REVIEW = "ROUTE_REVIEW"
 EVENT_ROUTE_APPROVAL = "ROUTE_APPROVAL"
+EVENT_ASSIGN = "ASSIGN"  # CR-036-VAR-005
 EVENT_REVIEW = "REVIEW"
 EVENT_APPROVE = "APPROVE"
 EVENT_REJECT = "REJECT"
@@ -232,6 +233,18 @@ def log_route_approval(
         assignees=assignees,
         approval_type=approval_type
     )
+    return append_audit_event(doc_id, doc_type, event)
+
+
+def log_assign(
+    doc_id: str,
+    doc_type: str,
+    user: str,
+    version: str,
+    assignees: List[str]
+) -> bool:
+    """Log reviewer assignment (CR-036-VAR-005)."""
+    event = create_event(EVENT_ASSIGN, user, version, assignees=assignees)
     return append_audit_event(doc_id, doc_type, event)
 
 

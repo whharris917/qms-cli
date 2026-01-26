@@ -101,7 +101,6 @@ class Status(Enum):
     CLOSED = "CLOSED"
 
     # Terminal states
-    SUPERSEDED = "SUPERSEDED"
     RETIRED = "RETIRED"
 
 
@@ -119,7 +118,7 @@ TRANSITIONS = {
     Status.REVIEWED: [Status.IN_REVIEW, Status.IN_APPROVAL],
     Status.IN_APPROVAL: [Status.APPROVED, Status.REVIEWED],  # REVIEWED on rejection
     Status.APPROVED: [Status.EFFECTIVE],
-    Status.EFFECTIVE: [Status.SUPERSEDED],
+    Status.EFFECTIVE: [],
 
     # Executable
     Status.IN_PRE_REVIEW: [Status.PRE_REVIEWED],
@@ -132,7 +131,6 @@ TRANSITIONS = {
     Status.IN_POST_APPROVAL: [Status.POST_APPROVED, Status.POST_REVIEWED],  # POST_REVIEWED on rejection
     Status.POST_APPROVED: [Status.CLOSED],
     Status.CLOSED: [],
-    Status.SUPERSEDED: [],
     Status.RETIRED: [],
 }
 

@@ -110,7 +110,6 @@ def create_initial_meta(
         "checked_out": True if responsible_user else False,
         "checked_out_date": str(date.today()) if responsible_user else None,
         "effective_version": None,
-        "supersedes": None,
         "pending_assignees": []
     }
 
