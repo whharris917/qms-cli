@@ -96,7 +96,6 @@ def cmd_migrate(args) -> int:
                     meta["checked_out"] = frontmatter.get("checked_out", False)
                     meta["checked_out_date"] = frontmatter.get("checked_out_date")
                     meta["effective_version"] = frontmatter.get("effective_version")
-                    meta["supersedes"] = frontmatter.get("supersedes")
 
                     write_meta(doc_id, actual_type, meta)
 

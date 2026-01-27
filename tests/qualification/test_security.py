@@ -106,9 +106,9 @@ def test_unauthorized_assign(temp_project):
 
 def test_fix_authorization(temp_project):
     """
-    Only QA and lead can use the fix command.
+    Only administrators can use the fix command.
 
-    Verifies: REQ-SEC-002
+    Verifies: REQ-SEC-002 (fix command available to administrator group)
     """
     # Setup: Create an effective document
     run_qms(temp_project, "claude", "create", "SOP", "--title", "Test Fix")
@@ -120,17 +120,22 @@ def test_fix_authorization(temp_project):
 
     # Now we have an EFFECTIVE document
 
-    # [REQ-SEC-002] Regular initiator cannot fix
-    result = run_qms(temp_project, "claude", "fix", "SOP-001")
-    assert result.returncode != 0, "Initiator claude should not be able to fix"
-
-    # [REQ-SEC-002] QA can fix
-    result = run_qms(temp_project, "qa", "fix", "SOP-001")
-    assert result.returncode == 0, "QA should be able to fix"
-
-    # [REQ-SEC-002] Lead can fix
+    # [REQ-SEC-002] Administrator 'lead' can fix (hardcoded admin)
     result = run_qms(temp_project, "lead", "fix", "SOP-001")
-    assert result.returncode == 0, "Lead should be able to fix"
+    assert result.returncode == 0, "Administrator lead should be able to fix"
+
+    # [REQ-SEC-002] Administrator 'claude' can fix (hardcoded admin)
+    result = run_qms(temp_project, "claude", "fix", "SOP-001")
+    assert result.returncode == 0, "Administrator claude should be able to fix"
+
+    # [REQ-SEC-002] Quality user 'qa' cannot fix (not administrator)
+    result = run_qms(temp_project, "qa", "fix", "SOP-001")
+    assert result.returncode != 0, "Quality user qa should not be able to fix"
+    assert "administrator" in result.stderr.lower(), "Error should mention administrator"
+
+    # [REQ-SEC-002] Reviewer 'tu_ui' cannot fix (not administrator)
+    result = run_qms(temp_project, "tu_ui", "fix", "SOP-001")
+    assert result.returncode != 0, "Reviewer tu_ui should not be able to fix"
 
 
 # ============================================================================

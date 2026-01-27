@@ -13,12 +13,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
-from qms_paths import QMS_ROOT, PROJECT_ROOT
+from qms_paths import QMS_ROOT, PROJECT_ROOT, require_project_root
 from qms_auth import get_current_user, verify_user_identity, get_user_group
 
 
-# Path to persistent namespace configuration
-NAMESPACE_CONFIG_PATH = QMS_ROOT / ".meta" / "sdlc_namespaces.json"
+def get_namespace_config_path() -> Path:
+    """Get the path to namespace configuration, ensuring project is initialized."""
+    require_project_root()
+    return QMS_ROOT / ".meta" / "sdlc_namespaces.json"
 
 
 def load_namespaces() -> dict:
@@ -29,9 +31,10 @@ def load_namespaces() -> dict:
     namespaces = dict(SDLC_NAMESPACES)
 
     # Merge with any persisted namespaces
-    if NAMESPACE_CONFIG_PATH.exists():
+    config_path = get_namespace_config_path()
+    if config_path.exists():
         try:
-            with open(NAMESPACE_CONFIG_PATH, "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 persisted = json.load(f)
                 namespaces.update(persisted)
         except (json.JSONDecodeError, IOError):
@@ -47,8 +50,9 @@ def save_namespaces(namespaces: dict) -> None:
     # Only save namespaces that aren't built-in
     custom = {k: v for k, v in namespaces.items() if k not in SDLC_NAMESPACES}
 
-    NAMESPACE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(NAMESPACE_CONFIG_PATH, "w", encoding="utf-8") as f:
+    config_path = get_namespace_config_path()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w", encoding="utf-8") as f:
         json.dump(custom, f, indent=2)
 
 

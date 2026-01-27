@@ -448,7 +448,10 @@ class PromptRegistry:
         assignee: str,
         assigned_by: str,
         task_id: str,
-        doc_type: str = ""
+        doc_type: str = "",
+        title: str = "",
+        status: str = "",
+        responsible_user: str = ""
     ) -> str:
         """
         Generate review task content using registered configuration.
@@ -461,6 +464,9 @@ class PromptRegistry:
             assigned_by: User who assigned the review
             task_id: Task identifier
             doc_type: Document type for prompt customization
+            title: Document title (CR-036-VAR-005)
+            status: Document status (CR-036-VAR-005)
+            responsible_user: Document owner (CR-036-VAR-005)
 
         Returns:
             Formatted task content string
@@ -510,6 +516,9 @@ task_id: {task_id}
 task_type: REVIEW
 workflow_type: {workflow_type}
 doc_id: {doc_id}
+title: {title}
+status: {status}
+responsible_user: {responsible_user}
 assigned_by: {assigned_by}
 assigned_date: {today()}
 version: {version}
@@ -590,7 +599,10 @@ Submit your review:
         assignee: str,
         assigned_by: str,
         task_id: str,
-        doc_type: str = ""
+        doc_type: str = "",
+        title: str = "",
+        status: str = "",
+        responsible_user: str = ""
     ) -> str:
         """
         Generate approval task content using registered configuration.
@@ -603,6 +615,9 @@ Submit your review:
             assigned_by: User who assigned the approval
             task_id: Task identifier
             doc_type: Document type for prompt customization
+            title: Document title (CR-036-VAR-005)
+            status: Document status (CR-036-VAR-005)
+            responsible_user: Document owner (CR-036-VAR-005)
 
         Returns:
             Formatted task content string
@@ -633,6 +648,9 @@ task_id: {task_id}
 task_type: APPROVAL
 workflow_type: {workflow_type}
 doc_id: {doc_id}
+title: {title}
+status: {status}
+responsible_user: {responsible_user}
 assigned_by: {assigned_by}
 assigned_date: {today()}
 version: {version}

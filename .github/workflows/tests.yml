@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, cr-036-init]
   pull_request:
     branches: [main]
 

@@ -20,7 +20,7 @@ EXECUTABLE_TYPES = {"CR", "INV", "CAPA", "TP", "ER", "VAR"}
 
 # Valid statuses for non-executable documents
 NON_EXECUTABLE_STATUSES = {
-    "DRAFT", "IN_REVIEW", "REVIEWED", "IN_APPROVAL", "APPROVED", "EFFECTIVE", "SUPERSEDED"
+    "DRAFT", "IN_REVIEW", "REVIEWED", "IN_APPROVAL", "APPROVED", "EFFECTIVE", "RETIRED"
 }
 
 # Valid statuses for executable documents

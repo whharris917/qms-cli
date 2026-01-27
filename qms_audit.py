@@ -10,9 +10,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
-from qms_paths import QMS_ROOT
+from qms_paths import QMS_ROOT, require_project_root
 
-AUDIT_ROOT = QMS_ROOT / ".audit"
+
+def get_audit_root() -> Path:
+    """Get the .audit root directory, ensuring project is initialized."""
+    require_project_root()
+    return QMS_ROOT / ".audit"
 
 
 # Event types
@@ -21,6 +25,7 @@ EVENT_CHECKOUT = "CHECKOUT"
 EVENT_CHECKIN = "CHECKIN"
 EVENT_ROUTE_REVIEW = "ROUTE_REVIEW"
 EVENT_ROUTE_APPROVAL = "ROUTE_APPROVAL"
+EVENT_ASSIGN = "ASSIGN"  # CR-036-VAR-005
 EVENT_REVIEW = "REVIEW"
 EVENT_APPROVE = "APPROVE"
 EVENT_REJECT = "REJECT"
@@ -34,7 +39,7 @@ EVENT_STATUS_CHANGE = "STATUS_CHANGE"
 
 def get_audit_dir(doc_type: str) -> Path:
     """Get the .audit directory for a document type."""
-    return AUDIT_ROOT / doc_type
+    return get_audit_root() / doc_type
 
 
 def get_audit_path(doc_id: str, doc_type: str) -> Path:
@@ -228,6 +233,18 @@ def log_route_approval(
         assignees=assignees,
         approval_type=approval_type
     )
+    return append_audit_event(doc_id, doc_type, event)
+
+
+def log_assign(
+    doc_id: str,
+    doc_type: str,
+    user: str,
+    version: str,
+    assignees: List[str]
+) -> bool:
+    """Log reviewer assignment (CR-036-VAR-005)."""
+    event = create_event(EVENT_ASSIGN, user, version, assignees=assignees)
     return append_audit_event(doc_id, doc_type, event)
 
 

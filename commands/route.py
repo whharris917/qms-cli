@@ -8,6 +8,8 @@ Created as part of CR-026: QMS CLI Extensibility Refactoring
 import sys
 from pathlib import Path
 
+import yaml
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -61,6 +63,18 @@ To check out an effective document for revision: qms --user {user} checkout {doc
     # Get workflow state from .meta (authoritative source)
     doc_type = get_doc_type(doc_id)
     meta = read_meta(doc_id, doc_type) or {}
+
+    # CR-036-VAR-005: Read document title from frontmatter
+    doc_title = ""
+    try:
+        content = draft_path.read_text(encoding="utf-8")
+        if content.startswith("---"):
+            end_idx = content.find("---", 3)
+            if end_idx > 0:
+                frontmatter = yaml.safe_load(content[3:end_idx])
+                doc_title = frontmatter.get("title", "") if frontmatter else ""
+    except (IOError, yaml.YAMLError):
+        pass
 
     # Verify document is checked in (not checked out)
     if meta.get("checked_out"):
@@ -181,6 +195,7 @@ If you want to permanently delete an unapproved draft, use the cancel command:
 
         # Generate enhanced task content with mandatory checklist and structured format
         # CR-027: Pass doc_type for prompt customization
+        # CR-036-VAR-005: Pass title, status, responsible_user for task content
         if task_type == "REVIEW":
             task_content = generate_review_task_content(
                 doc_id=doc_id,
@@ -189,7 +204,10 @@ If you want to permanently delete an unapproved draft, use the cancel command:
                 assignee=assignee,
                 assigned_by=user,
                 task_id=task_id,
-                doc_type=doc_type
+                doc_type=doc_type,
+                title=doc_title,
+                status=target_status.value,
+                responsible_user=meta.get("responsible_user", "")
             )
         else:
             task_content = generate_approval_task_content(
@@ -199,7 +217,10 @@ If you want to permanently delete an unapproved draft, use the cancel command:
                 assignee=assignee,
                 assigned_by=user,
                 task_id=task_id,
-                doc_type=doc_type
+                doc_type=doc_type,
+                title=doc_title,
+                status=target_status.value,
+                responsible_user=meta.get("responsible_user", "")
             )
 
         task_path.write_text(task_content, encoding="utf-8")

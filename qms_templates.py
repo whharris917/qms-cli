@@ -38,7 +38,10 @@ def generate_review_task_content(
     assignee: str,
     assigned_by: str,
     task_id: str,
-    doc_type: str = ""
+    doc_type: str = "",
+    title: str = "",
+    status: str = "",
+    responsible_user: str = ""
 ) -> str:
     """
     Generate enhanced review task content with mandatory checklist.
@@ -51,6 +54,9 @@ def generate_review_task_content(
         assigned_by: User who assigned the review
         task_id: Task identifier
         doc_type: Document type for prompt customization (CR-026)
+        title: Document title (CR-036-VAR-005)
+        status: Document status (CR-036-VAR-005)
+        responsible_user: Document owner (CR-036-VAR-005)
 
     Returns:
         Formatted task content string
@@ -63,7 +69,10 @@ def generate_review_task_content(
         assignee=assignee,
         assigned_by=assigned_by,
         task_id=task_id,
-        doc_type=doc_type
+        doc_type=doc_type,
+        title=title,
+        status=status,
+        responsible_user=responsible_user
     )
 
 
@@ -74,7 +83,10 @@ def generate_approval_task_content(
     assignee: str,
     assigned_by: str,
     task_id: str,
-    doc_type: str = ""
+    doc_type: str = "",
+    title: str = "",
+    status: str = "",
+    responsible_user: str = ""
 ) -> str:
     """
     Generate enhanced approval task content with final verification.
@@ -87,6 +99,9 @@ def generate_approval_task_content(
         assigned_by: User who assigned the approval
         task_id: Task identifier
         doc_type: Document type for prompt customization (CR-026)
+        title: Document title (CR-036-VAR-005)
+        status: Document status (CR-036-VAR-005)
+        responsible_user: Document owner (CR-036-VAR-005)
 
     Returns:
         Formatted task content string
@@ -99,7 +114,10 @@ def generate_approval_task_content(
         assignee=assignee,
         assigned_by=assigned_by,
         task_id=task_id,
-        doc_type=doc_type
+        doc_type=doc_type,
+        title=title,
+        status=status,
+        responsible_user=responsible_user
     )
 
 
