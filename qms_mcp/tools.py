@@ -300,7 +300,7 @@ def register_tools(mcp, run_qms_command: Callable):
 
         Requirement: REQ-MCP-004
         """
-        args = ["assign", doc_id] + assignees
+        args = ["assign", doc_id, "--assignees"] + assignees
         result = run_qms_command(args, user=user)
         return result["output"]
 
