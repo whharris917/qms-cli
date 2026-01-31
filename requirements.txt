@@ -1,0 +1,8 @@
+# QMS CLI - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core
+PyYAML>=6.0
+
+# MCP Server (Model Context Protocol)
+mcp[cli]>=1.2.0
