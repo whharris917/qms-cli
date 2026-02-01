@@ -201,8 +201,18 @@ def main(cli_args: list[str] | None = None):
         mcp.run(transport="stdio")
     else:
         # SSE transport for remote connections
+        # Configure host/port via settings (FastMCP.run() doesn't accept these as kwargs)
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
+
+        # Allow container connections via host.docker.internal
+        mcp.settings.transport_security.allowed_hosts.append("host.docker.internal:*")
+        mcp.settings.transport_security.allowed_origins.append(
+            "http://host.docker.internal:*"
+        )
+
         logger.info(f"Binding to {args.host}:{args.port}")
-        mcp.run(transport="sse", host=args.host, port=args.port)
+        mcp.run(transport="sse")
 
 
 if __name__ == "__main__":
