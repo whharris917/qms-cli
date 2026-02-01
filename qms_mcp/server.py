@@ -4,10 +4,12 @@ QMS MCP Server
 Model Context Protocol server for the Quality Management System CLI.
 Exposes QMS operations as MCP tools for integration with Claude Code and other MCP clients.
 
-Requirements: REQ-MCP-001, REQ-MCP-002
+Requirements: REQ-MCP-001, REQ-MCP-002, REQ-MCP-011, REQ-MCP-012, REQ-MCP-013
 """
 
+import argparse
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,13 +28,72 @@ logger = logging.getLogger("qms-mcp")
 mcp = FastMCP("qms")
 
 
+def parse_args(args: list[str] | None = None) -> argparse.Namespace:
+    """
+    Parse command-line arguments for the MCP server.
+
+    Args:
+        args: Command-line arguments (defaults to sys.argv[1:] if None)
+
+    Returns:
+        Parsed arguments namespace
+
+    Requirements: REQ-MCP-012
+    """
+    parser = argparse.ArgumentParser(
+        description="QMS MCP Server - Model Context Protocol server for QMS operations"
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="Transport mode: stdio (default, for subprocess) or sse (for remote HTTP)",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host address to bind for SSE transport (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind for SSE transport (default: 8000)",
+    )
+    parser.add_argument(
+        "--project-root",
+        dest="project_root",
+        help="Project root directory (default: auto-discover from QMS/ or qms.config.json)",
+    )
+    return parser.parse_args(args)
+
+
 def get_qms_root() -> Path | None:
     """
     Determine the QMS root directory.
 
-    Looks for QMS/ directory by walking up from the current working directory.
+    Resolution order (per REQ-MCP-013):
+    1. --project-root CLI argument (stored in QMS_PROJECT_ROOT env var by main())
+    2. QMS_PROJECT_ROOT environment variable
+    3. Auto-discovery by walking up from cwd looking for QMS/ directory
+
     Returns None if not found.
+
+    Requirements: REQ-MCP-013
     """
+    # Check environment variable first (set by CLI arg or directly)
+    env_root = os.environ.get("QMS_PROJECT_ROOT")
+    if env_root:
+        path = Path(env_root)
+        if (path / "QMS").is_dir():
+            logger.info(f"Using project root from QMS_PROJECT_ROOT: {path}")
+            return path
+        else:
+            logger.warning(
+                f"QMS_PROJECT_ROOT={env_root} does not contain QMS/ directory"
+            )
+
+    # Fall back to directory walking
     cwd = Path.cwd()
 
     # Check current directory and parents for QMS/
@@ -111,15 +172,37 @@ def run_qms_command(args: list[str], user: str = "claude") -> dict:
         }
 
 
-def main():
-    """Entry point for the QMS MCP server."""
-    logger.info("Starting QMS MCP Server")
+def main(cli_args: list[str] | None = None):
+    """
+    Entry point for the QMS MCP server.
+
+    Args:
+        cli_args: Command-line arguments (defaults to sys.argv[1:] if None)
+
+    Requirements: REQ-MCP-011, REQ-MCP-012, REQ-MCP-013
+    """
+    args = parse_args(cli_args)
+
+    # Set project root in environment if specified via CLI
+    # CLI argument takes precedence over existing env var (per REQ-MCP-013)
+    if args.project_root:
+        os.environ["QMS_PROJECT_ROOT"] = args.project_root
+        logger.info(f"Project root set from --project-root: {args.project_root}")
+
+    logger.info(f"Starting QMS MCP Server (transport={args.transport})")
 
     # Import and register tools (deferred to avoid circular imports)
     from .tools import register_tools
+
     register_tools(mcp, run_qms_command)
 
-    mcp.run(transport="stdio")
+    # Run with selected transport (per REQ-MCP-011)
+    if args.transport == "stdio":
+        mcp.run(transport="stdio")
+    else:
+        # SSE transport for remote connections
+        logger.info(f"Binding to {args.host}:{args.port}")
+        mcp.run(transport="sse", host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
