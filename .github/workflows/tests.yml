@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main, cr-036-init]
+    branches: [main, cr-036-init, cr-042-remote-mcp]
   pull_request:
     branches: [main]
 
@@ -17,7 +17,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install pytest pyyaml
+        run: pip install pytest pyyaml "mcp[cli]>=1.2.0"
 
       - name: Run qualification tests
         run: pytest tests/qualification/ -v
