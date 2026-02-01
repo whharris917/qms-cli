@@ -85,6 +85,7 @@ def run_qms_command(args: list[str], user: str = "claude") -> dict:
             text=True,
             cwd=str(qms_root),
             timeout=30,
+            stdin=subprocess.DEVNULL,
         )
 
         output = result.stdout
