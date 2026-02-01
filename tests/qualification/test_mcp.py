@@ -2,7 +2,7 @@
 QMS CLI Qualification Tests: MCP Server Tools
 
 Tests for the MCP server tools, verifying functional equivalence with CLI commands.
-Verifies requirements: REQ-MCP-001 through REQ-MCP-010
+Verifies requirements: REQ-MCP-001 through REQ-MCP-013
 
 Note: These tests verify that MCP tools delegate correctly to CLI commands and
 produce equivalent results. The MCP server uses subprocess to call the CLI,
@@ -859,3 +859,142 @@ def test_full_cr_lifecycle_via_cli(temp_project):
     # Verify CLOSED
     meta = read_meta(temp_project, "CR-001", "CR")
     assert meta["status"] == "CLOSED"
+
+
+# ============================================================================
+# REQ-MCP-011: Remote Transport Support
+# REQ-MCP-012: Transport CLI Configuration
+# REQ-MCP-013: Project Root Configuration
+# ============================================================================
+
+def get_server_module():
+    """Import the server module for testing."""
+    qms_cli_path = Path(__file__).parent.parent.parent
+    if str(qms_cli_path) not in sys.path:
+        sys.path.insert(0, str(qms_cli_path))
+
+    from qms_mcp import server
+    return server
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_cli_args_default():
+    """
+    Verify default CLI arguments for MCP server.
+
+    Verifies: REQ-MCP-012
+    """
+    server = get_server_module()
+    args = server.parse_args([])
+
+    assert args.transport == "stdio", "Default transport should be stdio"
+    assert args.host == "127.0.0.1", "Default host should be 127.0.0.1"
+    assert args.port == 8000, "Default port should be 8000"
+    assert args.project_root is None, "Default project_root should be None"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_cli_args_sse_transport():
+    """
+    Verify SSE transport CLI argument is accepted.
+
+    Verifies: REQ-MCP-011, REQ-MCP-012
+    """
+    server = get_server_module()
+    args = server.parse_args(["--transport", "sse"])
+
+    assert args.transport == "sse", "Transport should be set to sse"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_cli_args_host_port():
+    """
+    Verify host and port CLI arguments are accepted.
+
+    Verifies: REQ-MCP-012
+    """
+    server = get_server_module()
+    args = server.parse_args(["--host", "0.0.0.0", "--port", "9000"])
+
+    assert args.host == "0.0.0.0", "Host should be set to 0.0.0.0"
+    assert args.port == 9000, "Port should be set to 9000"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_cli_args_project_root():
+    """
+    Verify project-root CLI argument is accepted.
+
+    Verifies: REQ-MCP-013
+    """
+    server = get_server_module()
+    args = server.parse_args(["--project-root", "/custom/path"])
+
+    assert args.project_root == "/custom/path", "Project root should be set from CLI"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_project_root_env_var(temp_project, monkeypatch):
+    """
+    Verify QMS_PROJECT_ROOT environment variable is respected.
+
+    Verifies: REQ-MCP-013
+    """
+    server = get_server_module()
+
+    # Set env var to point to temp_project
+    monkeypatch.setenv("QMS_PROJECT_ROOT", str(temp_project))
+
+    # get_qms_root should return the path from env var
+    root = server.get_qms_root()
+
+    assert root is not None, "Should find project root from env var"
+    assert root == temp_project, f"Project root should be {temp_project}"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_project_root_env_var_invalid(monkeypatch, tmp_path):
+    """
+    Verify invalid QMS_PROJECT_ROOT is handled gracefully.
+
+    Verifies: REQ-MCP-013
+    """
+    server = get_server_module()
+
+    # Set env var to a path without QMS/ directory
+    invalid_path = tmp_path / "no_qms_here"
+    invalid_path.mkdir()
+    monkeypatch.setenv("QMS_PROJECT_ROOT", str(invalid_path))
+
+    # Change to a directory that also doesn't have QMS/
+    original_cwd = Path.cwd()
+    try:
+        import os
+        os.chdir(invalid_path)
+
+        # get_qms_root should return None (env var path invalid, no QMS/ in cwd)
+        root = server.get_qms_root()
+        assert root is None, "Should return None when env var path has no QMS/"
+    finally:
+        os.chdir(original_cwd)
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_transport_choices():
+    """
+    Verify transport argument only accepts valid choices.
+
+    Verifies: REQ-MCP-011, REQ-MCP-012
+    """
+    server = get_server_module()
+
+    # Valid transports should work
+    args_stdio = server.parse_args(["--transport", "stdio"])
+    assert args_stdio.transport == "stdio"
+
+    args_sse = server.parse_args(["--transport", "sse"])
+    assert args_sse.transport == "sse"
+
+    # Invalid transport should raise error
+    with pytest.raises(SystemExit):
+        server.parse_args(["--transport", "invalid"])
