@@ -73,6 +73,19 @@ Execution Content (editable during execution):
   11. Execution Summary
   12. References
 
+CODE CR PATTERNS:
+When a CR modifies controlled code (any system with SDLC governance):
+- Include Section 7.4 (Development Controls) and 7.5 (Qualified State Continuity)
+- Use the standardized implementation phases in Section 9
+- RS and RTM must be EFFECTIVE before merging to main
+- RTM must reference the CI-verified commit hash from the dev branch
+- Qualification happens on the dev branch; main stays qualified throughout
+
+The pattern ensures:
+- main branch is always in a qualified state
+- No code merges without approved requirements and passing tests
+- Full traceability from requirements to verified implementation
+
 Delete this comment block after reading.
 ================================================================================
 -->
@@ -160,6 +173,36 @@ Delete this comment block after reading.
 
 {{OTHER_IMPACTS - External systems, interfaces, dependencies, or "None"}}
 
+### 7.4 Development Controls
+
+<!--
+Include this section when the CR modifies controlled code.
+Delete this section for document-only CRs.
+-->
+
+This CR implements changes to {{SYSTEM}}, a controlled {{submodule/codebase}}. Development follows established controls:
+
+1. **Test environment isolation:** Development in a non-QMS-controlled directory (e.g., `.test-env/`, `/projects/` for containerized agents, or other gitignored location)
+2. **Branch isolation:** All development on branch `{{BRANCH_NAME}}`
+3. **Write protection:** `.claude/settings.local.json` blocks direct writes to `{{SYSTEM}}/`
+4. **Qualification required:** All new/modified requirements must have passing tests before merge
+5. **CI verification:** Tests must pass on GitHub Actions for dev branch
+6. **PR gate:** Changes merge to main only via PR after RS/RTM approval
+7. **Submodule update:** Parent repo updates pointer only after PR merge
+
+### 7.5 Qualified State Continuity
+
+<!--
+Include this section when the CR modifies controlled code.
+Delete this section for document-only CRs.
+-->
+
+| Phase | main branch | RS/RTM Status | Qualified Release |
+|-------|-------------|---------------|-------------------|
+| Before CR | Current commit | EFFECTIVE v{{N}}.0 | {{SYS}}-{{M}}.0 |
+| During execution | Unchanged | DRAFT (checked out) | {{SYS}}-{{M}}.0 (unchanged) |
+| Post-approval | Merged from {{BRANCH}} | EFFECTIVE v{{N+1}}.0 | {{SYS}}-{{M+1}}.0 |
+
 ---
 
 ## 8. Testing Summary
@@ -174,18 +217,76 @@ Delete this comment block after reading.
 
 ## 9. Implementation Plan
 
+<!--
+For code CRs, use these standardized phases. Adjust as needed.
+For document-only CRs, simplify to relevant steps.
+-->
+
 {{IMPLEMENTATION - Detailed plan for executing the change}}
 
-### 9.1 {{Phase/Component 1}}
+### 9.1 Phase 1: Test Environment Setup
 
-1. {{Step one}}
-2. {{Step two}}
-3. {{Step three}}
+<!--
+Include for code CRs. Delete for document-only CRs.
+-->
 
-### 9.2 {{Phase/Component 2}}
+1. Verify/create a non-QMS-controlled working directory (e.g., `.test-env/`, `/projects/`, or other appropriate location)
+2. Clone/update {{SYSTEM}} from GitHub
+3. Create and checkout branch `{{BRANCH_NAME}}`
+4. Verify clean test environment
 
-1. {{Step one}}
-2. {{Step two}}
+### 9.2 Phase 2: Requirements (RS Update)
+
+<!--
+Include for code CRs that add/modify requirements. Delete if not applicable.
+-->
+
+1. Checkout SDLC-{{NS}}-RS in production QMS
+2. Add/modify requirements as needed
+3. Checkin RS, route for review and approval
+
+### 9.3 Phase 3: Implementation
+
+1. Implement changes per Change Description
+2. Test locally
+3. Commit to dev branch
+
+### 9.4 Phase 4: Qualification
+
+<!--
+Include for code CRs. Delete for document-only CRs.
+-->
+
+1. Add/update qualification tests
+2. Run full test suite, verify all tests pass
+3. Push to dev branch
+4. Verify GitHub Actions CI passes
+5. Document qualified commit hash
+
+### 9.5 Phase 5: RTM Update
+
+<!--
+Include for code CRs that add/modify requirements. Delete if not applicable.
+-->
+
+1. Checkout SDLC-{{NS}}-RTM in production QMS
+2. Add verification evidence referencing CI-verified commit
+3. Checkin RTM, route for review and approval
+
+### 9.6 Phase 6: Merge and Submodule Update
+
+<!--
+Include for code CRs. Delete for document-only CRs.
+-->
+
+1. Once RS and RTM are EFFECTIVE, create PR to merge dev branch to main
+2. Merge PR
+3. Update submodule pointer in parent repo
+4. Verify functionality in production context
+
+### 9.7 Phase 7: Documentation (if applicable)
+
+1. Update CLAUDE.md or other documentation as needed
 
 ---
 
