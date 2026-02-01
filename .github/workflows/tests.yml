@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main, cr-036-init, cr-042-remote-mcp]
+    branches: [main, cr-036-init, cr-042-remote-mcp, cr-045-sse-requalification]
   pull_request:
     branches: [main]
 
