@@ -4,7 +4,7 @@ QMS MCP Server
 Model Context Protocol server for the Quality Management System CLI.
 Exposes QMS operations as MCP tools for integration with Claude Code and other MCP clients.
 
-Requirements: REQ-MCP-001, REQ-MCP-002, REQ-MCP-011, REQ-MCP-012, REQ-MCP-013
+Requirements: REQ-MCP-001, REQ-MCP-002, REQ-MCP-011, REQ-MCP-012, REQ-MCP-013, REQ-MCP-014
 """
 
 import argparse
@@ -45,20 +45,20 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--transport",
-        choices=["stdio", "sse"],
+        choices=["stdio", "sse", "streamable-http"],
         default="stdio",
-        help="Transport mode: stdio (default, for subprocess) or sse (for remote HTTP)",
+        help="Transport: stdio (default), sse (deprecated), or streamable-http (recommended for remote)",
     )
     parser.add_argument(
         "--host",
         default="127.0.0.1",
-        help="Host address to bind for SSE transport (default: 127.0.0.1)",
+        help="Host address to bind for remote transports (default: 127.0.0.1)",
     )
     parser.add_argument(
         "--port",
         type=int,
         default=8000,
-        help="Port to bind for SSE transport (default: 8000)",
+        help="Port to bind for remote transports (default: 8000)",
     )
     parser.add_argument(
         "--project-root",
@@ -179,7 +179,7 @@ def main(cli_args: list[str] | None = None):
     Args:
         cli_args: Command-line arguments (defaults to sys.argv[1:] if None)
 
-    Requirements: REQ-MCP-011, REQ-MCP-012, REQ-MCP-013
+    Requirements: REQ-MCP-011, REQ-MCP-012, REQ-MCP-013, REQ-MCP-014
     """
     args = parse_args(cli_args)
 
@@ -196,11 +196,11 @@ def main(cli_args: list[str] | None = None):
 
     register_tools(mcp, run_qms_command)
 
-    # Run with selected transport (per REQ-MCP-011)
+    # Run with selected transport (per REQ-MCP-011, REQ-MCP-014)
     if args.transport == "stdio":
         mcp.run(transport="stdio")
-    else:
-        # SSE transport for remote connections
+    elif args.transport == "streamable-http":
+        # Streamable-HTTP transport for remote connections (recommended per REQ-MCP-014)
         # Configure host/port via settings (FastMCP.run() doesn't accept these as kwargs)
         mcp.settings.host = args.host
         mcp.settings.port = args.port
@@ -211,7 +211,21 @@ def main(cli_args: list[str] | None = None):
             "http://host.docker.internal:*"
         )
 
-        logger.info(f"Binding to {args.host}:{args.port}")
+        logger.info(f"Binding to {args.host}:{args.port} (streamable-http)")
+        mcp.run(transport="streamable-http")
+    else:
+        # SSE transport for remote connections (deprecated, retained for backward compatibility)
+        # Configure host/port via settings (FastMCP.run() doesn't accept these as kwargs)
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
+
+        # Allow container connections via host.docker.internal
+        mcp.settings.transport_security.allowed_hosts.append("host.docker.internal:*")
+        mcp.settings.transport_security.allowed_origins.append(
+            "http://host.docker.internal:*"
+        )
+
+        logger.info(f"Binding to {args.host}:{args.port} (sse - deprecated)")
         mcp.run(transport="sse")
 
 
