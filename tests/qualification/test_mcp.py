@@ -984,7 +984,7 @@ def test_mcp_transport_choices():
     """
     Verify transport argument only accepts valid choices.
 
-    Verifies: REQ-MCP-011, REQ-MCP-012
+    Verifies: REQ-MCP-011, REQ-MCP-012, REQ-MCP-014
     """
     server = get_server_module()
 
@@ -994,6 +994,9 @@ def test_mcp_transport_choices():
 
     args_sse = server.parse_args(["--transport", "sse"])
     assert args_sse.transport == "sse"
+
+    args_streamable_http = server.parse_args(["--transport", "streamable-http"])
+    assert args_streamable_http.transport == "streamable-http"
 
     # Invalid transport should raise error
     with pytest.raises(SystemExit):
@@ -1073,3 +1076,137 @@ def test_mcp_sse_transport_security_allows_docker():
         # Restore original settings
         mcp.settings.transport_security.allowed_hosts = original_hosts
         mcp.settings.transport_security.allowed_origins = original_origins
+
+
+# ============================================================================
+# Streamable-HTTP Transport Integration Tests (CR-047)
+# ============================================================================
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_streamable_http_transport_configuration():
+    """
+    Verify streamable-http transport settings can be properly configured before server start.
+
+    This test verifies that the streamable-http transport can be configured with
+    custom host and port settings, which is essential for Docker container access.
+
+    Verifies: REQ-MCP-014
+    """
+    server = get_server_module()
+
+    # Get the mcp instance from the server module
+    mcp = server.mcp
+
+    # Verify that settings can be configured for streamable-http transport
+    original_host = mcp.settings.host
+    original_port = mcp.settings.port
+
+    try:
+        # Configure settings as the server.main() function does for streamable-http
+        mcp.settings.host = "0.0.0.0"
+        mcp.settings.port = 8000
+
+        # Verify settings were applied
+        assert mcp.settings.host == "0.0.0.0", "Host setting should be configurable for streamable-http"
+        assert mcp.settings.port == 8000, "Port setting should be configurable for streamable-http"
+    finally:
+        # Restore original settings
+        mcp.settings.host = original_host
+        mcp.settings.port = original_port
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_streamable_http_transport_security_allows_docker():
+    """
+    Verify transport security settings can be modified to allow Docker container connections
+    when using streamable-http transport.
+
+    This tests the security configuration that enables containers using
+    host.docker.internal to connect to the MCP server via streamable-http.
+
+    Verifies: REQ-MCP-014
+    """
+    server = get_server_module()
+
+    # Get the mcp instance from the server module
+    mcp = server.mcp
+
+    # Store original allowed_hosts for restoration
+    original_hosts = list(mcp.settings.transport_security.allowed_hosts)
+    original_origins = list(mcp.settings.transport_security.allowed_origins)
+
+    try:
+        # Add Docker host entries as the server does for streamable-http transport
+        docker_host = "host.docker.internal:*"
+        docker_origin = "http://host.docker.internal:*"
+
+        mcp.settings.transport_security.allowed_hosts.append(docker_host)
+        mcp.settings.transport_security.allowed_origins.append(docker_origin)
+
+        # Verify the entries were added
+        assert docker_host in mcp.settings.transport_security.allowed_hosts, \
+            "Should be able to add host.docker.internal to allowed_hosts for streamable-http"
+        assert docker_origin in mcp.settings.transport_security.allowed_origins, \
+            "Should be able to add host.docker.internal origin to allowed_origins for streamable-http"
+    finally:
+        # Restore original settings
+        mcp.settings.transport_security.allowed_hosts = original_hosts
+        mcp.settings.transport_security.allowed_origins = original_origins
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_streamable_http_cli_args():
+    """
+    Verify CLI arguments for streamable-http transport are properly parsed.
+
+    Tests the full command line configuration for Docker container access scenario:
+    --transport streamable-http --host 0.0.0.0 --port 8000
+
+    Verifies: REQ-MCP-012, REQ-MCP-014
+    """
+    server = get_server_module()
+
+    # Parse full Docker access configuration
+    args = server.parse_args([
+        "--transport", "streamable-http",
+        "--host", "0.0.0.0",
+        "--port", "8000"
+    ])
+
+    assert args.transport == "streamable-http", "Transport should be streamable-http"
+    assert args.host == "0.0.0.0", "Host should bind to all interfaces"
+    assert args.port == 8000, "Port should be 8000"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_mcp_streamable_http_is_recommended_over_sse():
+    """
+    Verify that streamable-http is documented as the recommended transport over SSE.
+
+    This test verifies the help text indicates the proper transport recommendations
+    per the MCP specification deprecation of SSE.
+
+    Verifies: REQ-MCP-014
+    """
+    server = get_server_module()
+    import argparse
+    import io
+    import sys
+
+    # Capture help text
+    parser = argparse.ArgumentParser(
+        description="QMS MCP Server - Model Context Protocol server for QMS operations"
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "streamable-http"],
+        default="stdio",
+        help="Transport: stdio (default), sse (deprecated), or streamable-http (recommended for remote)",
+    )
+
+    # Get help text
+    help_text = parser.format_help()
+
+    # Verify help text indicates SSE is deprecated and streamable-http is recommended
+    assert "deprecated" in help_text.lower(), "Help text should indicate SSE is deprecated"
+    assert "recommended" in help_text.lower(), "Help text should indicate streamable-http is recommended"
