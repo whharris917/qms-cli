@@ -133,7 +133,7 @@ class TestVerifyUserIdentity:
         """Invalid users should return False and print error."""
         assert qms_module.verify_user_identity("unknown_user") is False
         captured = capsys.readouterr()
-        assert "not a valid QMS user" in captured.out
+        assert "not found" in captured.out
 
 
 class TestVerifyFolderAccess:

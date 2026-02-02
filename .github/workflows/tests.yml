@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main, cr-036-init, cr-042-remote-mcp, cr-045-sse-requalification, cr-047-streamable-http]
+    branches: ['**']
   pull_request:
     branches: [main]
 
@@ -19,5 +19,5 @@ jobs:
       - name: Install dependencies
         run: pip install pytest pyyaml "mcp[cli]>=1.2.0"
 
-      - name: Run qualification tests
-        run: pytest tests/qualification/ -v
+      - name: Run all tests
+        run: pytest tests/ -v
