@@ -4,7 +4,9 @@ QMS Checkin Command
 Checks in a document from workspace.
 
 Created as part of CR-026: QMS CLI Extensibility Refactoring
+Updated in CR-048: Archive on commit for execution versioning
 """
+import shutil
 import sys
 from pathlib import Path
 
@@ -12,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
-from qms_paths import get_doc_type, get_doc_path, get_workspace_path
+from qms_paths import get_doc_type, get_doc_path, get_workspace_path, get_archive_path
 from qms_io import read_document, write_document_minimal
 from qms_auth import get_current_user, check_permission, verify_user_identity
 from qms_meta import read_meta, write_meta, update_meta_checkin
@@ -65,7 +67,24 @@ To see your workspace: qms --user {user} workspace
     frontmatter, body = read_document(workspace_path)
 
     # Get version from .meta (authoritative source)
+    # Note: For IN_EXECUTION checkouts, version was already incremented on checkout
     version = meta.get("version", frontmatter.get("version", "0.1"))
+    current_status = meta.get("status", "DRAFT")
+
+    # REQ-WF-021: Archive on commit for IN_EXECUTION documents
+    # Archive the previous version before writing the new one
+    if current_status == "IN_EXECUTION" and draft_path.exists():
+        # Calculate the previous version that's currently in draft_path
+        # The meta version is already the NEW version (incremented on checkout)
+        # So we need to determine what's being archived
+        major, minor = str(version).split(".")
+        if int(minor) > 0:
+            # Previous version exists - archive it
+            prev_version = f"{major}.{int(minor) - 1}"
+            archive_path = get_archive_path(doc_id, prev_version)
+            archive_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(draft_path, archive_path)
+            print(f"Archived: v{prev_version}")
 
     # Write content to QMS draft with minimal frontmatter
     write_document_minimal(draft_path, frontmatter, body)

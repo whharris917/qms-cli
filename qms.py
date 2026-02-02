@@ -10,7 +10,7 @@ Usage:
 
 Commands:
     create, read, checkout, checkin, route, review, approve, reject,
-    release, revert, close, status, inbox, workspace
+    release, revert, withdraw, close, status, inbox, workspace
 
 Architecture (CR-026):
     Each command is defined in its own file under commands/ and self-registers
@@ -131,6 +131,10 @@ Valid users:
     p_revert = subparsers.add_parser("revert", help="Revert to execution")
     p_revert.add_argument("doc_id", help="Document ID")
     p_revert.add_argument("--reason", required=True, help="Revert reason")
+
+    # withdraw (CR-048)
+    p_withdraw = subparsers.add_parser("withdraw", help="Withdraw from review or approval")
+    p_withdraw.add_argument("doc_id", help="Document ID")
 
     # close
     p_close = subparsers.add_parser("close", help="Close a document")

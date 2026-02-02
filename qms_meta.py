@@ -157,8 +157,10 @@ def update_meta_checkin(meta: Dict[str, Any]) -> Dict[str, Any]:
     # This is critical for CAPA-4: post-release documents must stay in post-release workflow
 
     # Revert reviewed states to DRAFT - new version needs review
+    # Note: POST_REVIEWED is NOT included here per CR-048 (REQ-WF-017)
+    # POST_REVIEWED checkout transitions directly to IN_EXECUTION
     current_status = meta.get("status", "DRAFT")
-    if current_status in ("REVIEWED", "PRE_REVIEWED", "POST_REVIEWED"):
+    if current_status in ("REVIEWED", "PRE_REVIEWED"):
         meta["status"] = "DRAFT"
         # Clear review-related fields since we're starting fresh
         meta["pending_reviewers"] = []

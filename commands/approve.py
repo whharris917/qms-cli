@@ -151,8 +151,18 @@ Check your inbox for assigned tasks: qms --user {user} inbox
 
             elif new_status == Status.APPROVED:
                 # Non-executable normal workflow: transition to EFFECTIVE
-                frontmatter, body = read_document(draft_path)
                 effective_path = get_doc_path(doc_id, draft=False)
+
+                # REQ-WF-020: Archive previous effective version on approval
+                # (Archival happens on commit, not on checkout)
+                prev_effective_version = meta.get("effective_version")
+                if prev_effective_version and effective_path.exists():
+                    archive_path_eff = get_archive_path(doc_id, prev_effective_version)
+                    archive_path_eff.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy(effective_path, archive_path_eff)
+                    print(f"Archived previous effective: v{prev_effective_version}")
+
+                frontmatter, body = read_document(draft_path)
                 write_document_minimal(effective_path, frontmatter, body)
                 draft_path.unlink()
                 print(f"Document is now EFFECTIVE at {effective_path.relative_to(PROJECT_ROOT)}")

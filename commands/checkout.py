@@ -4,8 +4,8 @@ QMS Checkout Command
 Checks out a document for editing.
 
 Created as part of CR-026: QMS CLI Extensibility Refactoring
+Updated in CR-048: Status-aware transitions, effective version preservation
 """
-import shutil
 import sys
 from pathlib import Path
 
@@ -13,11 +13,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
-from qms_paths import PROJECT_ROOT, get_doc_type, get_doc_path, get_archive_path, get_workspace_path
+from qms_paths import PROJECT_ROOT, get_doc_type, get_doc_path, get_workspace_path
 from qms_io import parse_frontmatter, write_document_minimal
 from qms_auth import get_current_user, check_permission, verify_user_identity
 from qms_meta import read_meta, write_meta, update_meta_checkout
 from qms_audit import log_checkout
+
+
+def clear_workflow_tracking(meta: dict) -> dict:
+    """Clear review/approval tracking fields for fresh workflow cycle."""
+    meta = meta.copy()
+    meta["pending_assignees"] = []
+    meta["completed_reviewers"] = []
+    meta["review_outcomes"] = {}
+    return meta
 
 
 @CommandRegistry.register(
@@ -46,6 +55,7 @@ def cmd_checkout(args) -> int:
 
     doc_type = get_doc_type(doc_id)
     meta = read_meta(doc_id, doc_type) or {}
+    current_status = meta.get("status", "DRAFT")
 
     if draft_path.exists():
         # Already a draft - check if already checked out (from .meta)
@@ -63,6 +73,28 @@ def cmd_checkout(args) -> int:
 
         # Check out existing draft - update .meta
         version = meta.get("version", "0.1")
+
+        # REQ-WF-016: PRE_APPROVED checkout -> DRAFT
+        if current_status == "PRE_APPROVED":
+            meta = clear_workflow_tracking(meta)
+            meta["status"] = "DRAFT"
+            print(f"Transitioned from PRE_APPROVED to DRAFT for scope revision")
+
+        # REQ-WF-017: POST_REVIEWED checkout -> IN_EXECUTION
+        elif current_status == "POST_REVIEWED":
+            meta = clear_workflow_tracking(meta)
+            meta["status"] = "IN_EXECUTION"
+            print(f"Transitioned from POST_REVIEWED to IN_EXECUTION for continued execution")
+
+        # REQ-WF-021: IN_EXECUTION checkout increments minor version
+        # Create N.(X+1) in workspace while N.X remains current in QMS
+        if current_status == "IN_EXECUTION":
+            current_ver = meta.get("version", "1.0")
+            major, minor = str(current_ver).split(".")
+            new_version = f"{major}.{int(minor) + 1}"
+            meta["version"] = new_version
+            print(f"Execution checkout: creating v{new_version} (current: v{current_ver})")
+
         meta = update_meta_checkout(meta, user)
         write_meta(doc_id, doc_type, meta)
 
@@ -83,11 +115,10 @@ def cmd_checkout(args) -> int:
         major = int(str(current_version).split(".")[0])
         new_version = f"{major}.1"
 
-        # Archive effective version before creating draft (per CR-005)
-        archive_path = get_archive_path(doc_id, current_version)
-        archive_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(effective_path, archive_path)
-        print(f"Archived: v{current_version}")
+        # REQ-WF-020: Effective version preservation
+        # Do NOT archive on checkout - archival happens on approval
+        # The effective version stays "in force" until superseded
+        # (Removed: archive logic that was here)
 
         # Update .meta file for new draft
         meta = update_meta_checkout(meta, user, new_version=new_version)

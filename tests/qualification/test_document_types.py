@@ -568,14 +568,15 @@ def test_cancel_cleans_workspace_and_inbox(temp_project):
 # Test: Checkout EFFECTIVE Creates Archive
 # ============================================================================
 
-def test_checkout_effective_creates_archive(temp_project):
+def test_checkout_effective_preserves_effective(temp_project):
     """
-    Checkout of EFFECTIVE document archives current version and creates draft.
+    [REQ-WF-020] Checkout of EFFECTIVE document preserves effective version.
+    Archive happens on approval, not checkout.
 
-    Verifies: REQ-DOC-007
+    Verifies: REQ-WF-020
     """
     # Create SOP and get to EFFECTIVE
-    run_qms(temp_project, "claude", "create", "SOP", "--title", "Checkout Archive Test")
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Checkout Preserve Test")
     run_qms(temp_project, "claude", "checkin", "SOP-001")
     run_qms(temp_project, "claude", "route", "SOP-001", "--review")
     run_qms(temp_project, "qa", "review", "SOP-001", "--recommend", "--comment", "OK")
@@ -590,22 +591,64 @@ def test_checkout_effective_creates_archive(temp_project):
     assert (temp_project / "QMS" / "SOP" / "SOP-001.md").exists()
     assert not (temp_project / "QMS" / "SOP" / "SOP-001-draft.md").exists()
 
-    # [REQ-DOC-007] Checkout EFFECTIVE document
+    # [REQ-WF-020] Checkout EFFECTIVE document - effective stays in place
     result = run_qms(temp_project, "claude", "checkout", "SOP-001")
     assert result.returncode == 0
 
-    # Verify archive created (v1.0)
+    # Verify archive NOT created on checkout (per REQ-WF-020)
     archive_path = temp_project / "QMS" / ".archive" / "SOP" / "SOP-001-v1.0.md"
-    assert archive_path.exists(), "Archive of v1.0 should be created"
+    assert not archive_path.exists(), "Archive of v1.0 should NOT be created on checkout"
+
+    # Verify effective version still exists (still "in force")
+    assert (temp_project / "QMS" / "SOP" / "SOP-001.md").exists(), "Effective version should remain"
 
     # Verify new draft created at N.1 version
     meta = read_meta(temp_project, "SOP-001", "SOP")
     assert meta["version"] == "1.1", "Version should be incremented to 1.1"
     assert meta["status"] == "DRAFT", "Status should be DRAFT"
+    assert meta["effective_version"] == "1.0", "effective_version should track the version in force"
 
-    # Verify draft file exists
+    # Verify draft file exists alongside effective
     assert (temp_project / "QMS" / "SOP" / "SOP-001-draft.md").exists()
 
     # Verify workspace copy created
     workspace_path = temp_project / ".claude" / "users" / "claude" / "workspace" / "SOP-001.md"
     assert workspace_path.exists(), "Workspace copy should be created"
+
+
+def test_approval_archives_effective(temp_project):
+    """
+    [REQ-WF-020] Approval archives the previous effective version.
+    Archive happens on commit (approval), not checkout.
+
+    Verifies: REQ-WF-020
+    """
+    # Create SOP and get to EFFECTIVE v1.0
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Archive on Approval Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    run_qms(temp_project, "qa", "review", "SOP-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "SOP-001")
+
+    # Checkout, edit, checkin for revision
+    run_qms(temp_project, "claude", "checkout", "SOP-001")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+
+    # No archive yet (per REQ-WF-020 - archive on commit, not checkout)
+    archive_path = temp_project / "QMS" / ".archive" / "SOP" / "SOP-001-v1.0.md"
+    assert not archive_path.exists(), "v1.0 should NOT be archived before approval"
+
+    # Route through review and approval
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+    run_qms(temp_project, "qa", "review", "SOP-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "SOP-001")
+
+    # Now v1.0 should be archived (per REQ-WF-020)
+    assert archive_path.exists(), "v1.0 should be archived on approval"
+
+    # Document should now be EFFECTIVE at v2.0
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["version"] == "2.0"
+    assert meta["status"] == "EFFECTIVE"
