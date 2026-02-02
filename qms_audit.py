@@ -35,6 +35,7 @@ EVENT_REVERT = "REVERT"
 EVENT_CLOSE = "CLOSE"
 EVENT_RETIRE = "RETIRE"
 EVENT_STATUS_CHANGE = "STATUS_CHANGE"
+EVENT_WITHDRAW = "WITHDRAW"  # CR-048
 
 
 def get_audit_dir(doc_type: str) -> Path:
@@ -321,6 +322,23 @@ def log_status_change(
     """Log generic status change."""
     event = create_event(
         EVENT_STATUS_CHANGE, user, version,
+        from_status=from_status,
+        to_status=to_status
+    )
+    return append_audit_event(doc_id, doc_type, event)
+
+
+def log_withdraw(
+    doc_id: str,
+    doc_type: str,
+    user: str,
+    version: str,
+    from_status: str,
+    to_status: str
+) -> bool:
+    """Log workflow withdrawal (CR-048)."""
+    event = create_event(
+        EVENT_WITHDRAW, user, version,
         from_status=from_status,
         to_status=to_status
     )

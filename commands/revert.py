@@ -30,6 +30,12 @@ from qms_audit import log_revert
 )
 def cmd_revert(args) -> int:
     """Revert an executable document back to execution."""
+    # REQ-WF-019: Deprecation warning
+    print("WARNING: The 'revert' command is deprecated.")
+    print("Preferred alternative: checkout from POST_REVIEWED status.")
+    print("  Example: qms --user {user} checkout {doc_id}")
+    print()
+
     doc_id = args.doc_id
     user = get_current_user(args)
 

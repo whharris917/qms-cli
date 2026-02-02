@@ -527,14 +527,15 @@ def test_checkin_reverts_post_reviewed(temp_project):
     meta = read_meta(temp_project, "CR-001", "CR")
     assert meta["status"] == "POST_REVIEWED"
 
-    # [REQ-DOC-009] Checkout and checkin from POST_REVIEWED
+    # [REQ-WF-017] Checkout from POST_REVIEWED transitions to IN_EXECUTION
+    # (per CR-048, POST_REVIEWED checkout → IN_EXECUTION for continued execution)
     run_qms(temp_project, "claude", "checkout", "CR-001")
     run_qms(temp_project, "claude", "checkin", "CR-001")
 
-    # Verify status reverted to DRAFT per REQ-DOC-009
-    # (the requirement says REVIEWED/PRE_REVIEWED/POST_REVIEWED all revert to DRAFT)
+    # Verify status is IN_EXECUTION per REQ-WF-017
+    # (checkout transitions to IN_EXECUTION, checkin preserves it)
     meta = read_meta(temp_project, "CR-001", "CR")
-    assert meta["status"] == "DRAFT", "POST_REVIEWED should revert to DRAFT on checkin per REQ-DOC-009"
+    assert meta["status"] == "IN_EXECUTION", "POST_REVIEWED checkout should transition to IN_EXECUTION per REQ-WF-017"
 
     # Verify review tracking fields cleared
     assert meta["pending_assignees"] == [], "pending_assignees should be cleared"
