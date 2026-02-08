@@ -330,7 +330,7 @@ def register_tools(mcp, run_qms_command: Callable):
         if outcome not in ("recommend", "request-updates"):
             return f"Error: outcome must be 'recommend' or 'request-updates', got '{outcome}'"
 
-        args = ["review", doc_id, "--outcome", outcome]
+        args = ["review", doc_id, f"--{outcome}"]
         if comment:
             args.extend(["--comment", comment])
         result = run_qms_command(args, user=user)
@@ -380,6 +380,25 @@ def register_tools(mcp, run_qms_command: Callable):
             return "Error: comment is required when rejecting a document."
         args = ["reject", doc_id, "--comment", comment]
         result = run_qms_command(args, user=user)
+        return result["output"]
+
+    @mcp.tool()
+    def qms_withdraw(doc_id: str, user: str = "claude") -> str:
+        """
+        Withdraw a document from review or approval workflow.
+
+        Returns document to its previous state before routing.
+
+        Args:
+            doc_id: Document identifier (e.g., "CR-001")
+            user: QMS user identity - must be document owner (default: "claude")
+
+        Returns:
+            Confirmation of withdrawal or error message.
+
+        Requirement: REQ-MCP-004
+        """
+        result = run_qms_command(["withdraw", doc_id], user=user)
         return result["output"]
 
     # =========================================================================
