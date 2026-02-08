@@ -129,7 +129,7 @@ def test_register_tools_creates_all_tools():
         # REQ-MCP-003: Document Lifecycle Tools
         "qms_create", "qms_checkout", "qms_checkin", "qms_cancel",
         # REQ-MCP-004: Workflow Tools
-        "qms_route", "qms_assign", "qms_review", "qms_approve", "qms_reject",
+        "qms_route", "qms_assign", "qms_review", "qms_approve", "qms_reject", "qms_withdraw",
         # REQ-MCP-005: Execution Tools
         "qms_release", "qms_revert", "qms_close",
         # REQ-MCP-006: Administrative Tools
@@ -139,7 +139,7 @@ def test_register_tools_creates_all_tools():
     for tool_name in expected_tools:
         assert tool_name in registered_tools, f"Tool {tool_name} should be registered"
 
-    assert len(registered_tools) == 19, f"Expected 19 tools, got {len(registered_tools)}"
+    assert len(registered_tools) == 20, f"Expected 20 tools, got {len(registered_tools)}"
 
 
 # ============================================================================
@@ -482,6 +482,189 @@ def test_qms_reject_equivalence(temp_project):
     # Verify status returned to REVIEWED
     meta = read_meta(temp_project, "SOP-001", "SOP")
     assert meta["status"] == "REVIEWED"
+
+
+def test_qms_withdraw_equivalence(temp_project):
+    """
+    Verify qms_withdraw produces equivalent results to CLI withdraw command.
+
+    Verifies: REQ-MCP-004, REQ-MCP-007
+    """
+    # Create and route for review
+    run_qms(temp_project, "claude", "create", "SOP", "--title", "Withdraw Test")
+    run_qms(temp_project, "claude", "checkin", "SOP-001")
+    run_qms(temp_project, "claude", "route", "SOP-001", "--review")
+
+    # Verify in review
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "IN_REVIEW"
+
+    # Run CLI withdraw command
+    cli_result = run_qms(temp_project, "claude", "withdraw", "SOP-001")
+
+    # Verify withdrawal succeeded
+    assert cli_result.returncode == 0
+
+    # Verify status returned to DRAFT
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["status"] == "DRAFT"
+
+
+# ============================================================================
+# REQ-MCP-007: MCP Tool Argument Mapping Verification
+# ============================================================================
+
+def test_qms_review_mcp_layer_recommend():
+    """
+    Verify qms_review MCP tool constructs correct CLI args for 'recommend'.
+
+    Tests the MCP-to-CLI argument mapping layer directly, catching defects
+    like the --outcome bug that CLI-only tests miss.
+
+    Verifies: REQ-MCP-004, REQ-MCP-007
+    """
+    tools = get_tools_module_directly()
+
+    mock_mcp = MagicMock()
+    captured_calls = []
+
+    def mock_tool_decorator():
+        def decorator(func):
+            return func
+        return decorator
+
+    mock_mcp.tool = mock_tool_decorator
+
+    def capturing_run(args, user="claude"):
+        captured_calls.append({"args": args, "user": user})
+        return {"success": True, "output": "Reviewed: SOP-001", "return_code": 0}
+
+    tools.register_tools(mock_mcp, capturing_run)
+
+    # Call the registered tool function with MCP parameters
+    result = tools.register_tools.__code__  # Need to get the registered function
+    # Instead, call via the mock approach: re-register and capture the function
+    registered_funcs = {}
+
+    def capturing_decorator():
+        def decorator(func):
+            registered_funcs[func.__name__] = func
+            return func
+        return decorator
+
+    mock_mcp2 = MagicMock()
+    mock_mcp2.tool = capturing_decorator
+    tools.register_tools(mock_mcp2, capturing_run)
+
+    # Call qms_review with recommend
+    result = registered_funcs["qms_review"](doc_id="SOP-001", outcome="recommend", comment="Looks good")
+
+    assert len(captured_calls) == 1
+    assert captured_calls[0]["args"] == ["review", "SOP-001", "--recommend", "--comment", "Looks good"]
+    assert captured_calls[0]["user"] == "claude"
+
+
+def test_qms_review_mcp_layer_request_updates():
+    """
+    Verify qms_review MCP tool constructs correct CLI args for 'request-updates'.
+
+    This is the exact scenario that failed before the fix: outcome="request-updates"
+    was incorrectly mapped to ["--outcome", "request-updates"] instead of ["--request-updates"].
+
+    Verifies: REQ-MCP-004, REQ-MCP-007
+    """
+    tools = get_tools_module_directly()
+    captured_calls = []
+    registered_funcs = {}
+
+    def capturing_decorator():
+        def decorator(func):
+            registered_funcs[func.__name__] = func
+            return func
+        return decorator
+
+    mock_mcp = MagicMock()
+    mock_mcp.tool = capturing_decorator
+
+    def capturing_run(args, user="claude"):
+        captured_calls.append({"args": args, "user": user})
+        return {"success": True, "output": "Reviewed: SOP-001", "return_code": 0}
+
+    tools.register_tools(mock_mcp, capturing_run)
+
+    # Call qms_review with request-updates
+    result = registered_funcs["qms_review"](doc_id="CR-064", outcome="request-updates", comment="Needs work")
+
+    assert len(captured_calls) == 1
+    assert captured_calls[0]["args"] == ["review", "CR-064", "--request-updates", "--comment", "Needs work"]
+    assert captured_calls[0]["user"] == "claude"
+
+
+def test_qms_route_mcp_layer():
+    """
+    Verify qms_route MCP tool constructs correct CLI args for route types.
+
+    Verifies: REQ-MCP-004, REQ-MCP-007
+    """
+    tools = get_tools_module_directly()
+    captured_calls = []
+    registered_funcs = {}
+
+    def capturing_decorator():
+        def decorator(func):
+            registered_funcs[func.__name__] = func
+            return func
+        return decorator
+
+    mock_mcp = MagicMock()
+    mock_mcp.tool = capturing_decorator
+
+    def capturing_run(args, user="claude"):
+        captured_calls.append({"args": args, "user": user})
+        return {"success": True, "output": "Routed", "return_code": 0}
+
+    tools.register_tools(mock_mcp, capturing_run)
+
+    # Test review routing
+    registered_funcs["qms_route"](doc_id="SOP-001", route_type="review")
+    assert captured_calls[-1]["args"] == ["route", "SOP-001", "--review"]
+
+    # Test approval routing
+    registered_funcs["qms_route"](doc_id="SOP-001", route_type="approval")
+    assert captured_calls[-1]["args"] == ["route", "SOP-001", "--approval"]
+
+
+def test_qms_withdraw_mcp_layer():
+    """
+    Verify qms_withdraw MCP tool constructs correct CLI args.
+
+    Verifies: REQ-MCP-004, REQ-MCP-007
+    """
+    tools = get_tools_module_directly()
+    captured_calls = []
+    registered_funcs = {}
+
+    def capturing_decorator():
+        def decorator(func):
+            registered_funcs[func.__name__] = func
+            return func
+        return decorator
+
+    mock_mcp = MagicMock()
+    mock_mcp.tool = capturing_decorator
+
+    def capturing_run(args, user="claude"):
+        captured_calls.append({"args": args, "user": user})
+        return {"success": True, "output": "Withdrawn: SOP-001", "return_code": 0}
+
+    tools.register_tools(mock_mcp, capturing_run)
+
+    # Call qms_withdraw
+    registered_funcs["qms_withdraw"](doc_id="SOP-001", user="claude")
+
+    assert len(captured_calls) == 1
+    assert captured_calls[0]["args"] == ["withdraw", "SOP-001"]
+    assert captured_calls[0]["user"] == "claude"
 
 
 # ============================================================================
