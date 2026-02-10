@@ -1415,3 +1415,236 @@ def test_mcp_streamable_http_is_recommended_over_sse():
     # Verify help text indicates SSE is deprecated and streamable-http is recommended
     assert "deprecated" in help_text.lower(), "Help text should indicate SSE is deprecated"
     assert "recommended" in help_text.lower(), "Help text should indicate streamable-http is recommended"
+
+
+# ============================================================================
+# REQ-MCP-015: Transport-Based Identity Resolution
+# ============================================================================
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_stdio_default():
+    """
+    Verify resolve_identity returns default 'claude' for stdio transport.
+
+    Stdio transport has no HTTP request context, so resolve_identity should
+    fall back to the user_param default.
+
+    Verifies: REQ-MCP-015
+    """
+    server = get_server_module()
+
+    ctx = MagicMock()
+    ctx.request_context = None  # Stdio transport
+
+    result = server.resolve_identity(ctx)
+    assert result == "claude", "Default identity should be 'claude' for stdio"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_stdio_custom_user():
+    """
+    Verify resolve_identity returns custom user_param for stdio transport.
+
+    When an agent self-declares identity via user parameter on stdio,
+    the system trusts it (no header enforcement).
+
+    Verifies: REQ-MCP-015
+    """
+    server = get_server_module()
+
+    ctx = MagicMock()
+    ctx.request_context = None  # Stdio transport
+
+    result = server.resolve_identity(ctx, "qa")
+    assert result == "qa", "Custom user should be returned for stdio transport"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_http_header_enforced():
+    """
+    Verify resolve_identity uses X-QMS-Identity header for HTTP transport.
+
+    When an HTTP request carries the identity header, the header value
+    takes precedence over the user parameter (enforced mode).
+
+    Verifies: REQ-MCP-015
+    """
+    from starlette.requests import Request
+    from starlette.testclient import TestClient
+
+    server = get_server_module()
+
+    # Create a mock Starlette Request with the identity header
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {"x-qms-identity": "qa"}
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+
+    # Header should override the default user param
+    result = server.resolve_identity(ctx, "claude")
+    assert result == "qa", "HTTP header should enforce identity as 'qa'"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_http_header_overrides_user_param():
+    """
+    Verify HTTP header identity overrides mismatched user parameter.
+
+    When the header says 'qa' but the user param says 'tu_ui',
+    the header wins (enforced mode). A warning should be logged.
+
+    Verifies: REQ-MCP-015
+    """
+    from starlette.requests import Request
+
+    server = get_server_module()
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {"x-qms-identity": "qa"}
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+
+    # Header 'qa' should override user param 'tu_ui'
+    result = server.resolve_identity(ctx, "tu_ui")
+    assert result == "qa", "HTTP header should override user param"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_http_no_header_falls_back():
+    """
+    Verify resolve_identity falls back to user_param when HTTP header is missing.
+
+    An HTTP request without X-QMS-Identity should fall through to the
+    user parameter (degraded mode with warning).
+
+    Verifies: REQ-MCP-015
+    """
+    from starlette.requests import Request
+
+    server = get_server_module()
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {}  # No identity header
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+
+    result = server.resolve_identity(ctx, "claude")
+    assert result == "claude", "Missing header should fall back to user param"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_unknown_agent_still_resolves():
+    """
+    Verify resolve_identity accepts unknown agent identities from headers.
+
+    Unknown agents are warned about but still accepted -- the identity
+    resolution layer does not enforce authorization.
+
+    Verifies: REQ-MCP-015
+    """
+    from starlette.requests import Request
+
+    server = get_server_module()
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {"x-qms-identity": "unknown_agent"}
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+
+    result = server.resolve_identity(ctx, "claude")
+    assert result == "unknown_agent", "Unknown agents should still resolve from header"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_known_agents_set():
+    """
+    Verify KNOWN_AGENTS contains all expected agent identities.
+
+    Verifies: REQ-MCP-015
+    """
+    server = get_server_module()
+
+    expected = {"lead", "claude", "qa", "bu", "tu_ui", "tu_scene", "tu_sketch", "tu_sim"}
+    assert server.KNOWN_AGENTS == expected, f"KNOWN_AGENTS mismatch: {server.KNOWN_AGENTS}"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_attribute_error_falls_back():
+    """
+    Verify resolve_identity handles AttributeError gracefully.
+
+    If the context chain raises AttributeError (e.g., unexpected context
+    structure), the function should fall back to user_param.
+
+    Verifies: REQ-MCP-015
+    """
+    server = get_server_module()
+
+    # Context that raises AttributeError on access
+    ctx = MagicMock()
+    ctx.request_context = MagicMock()
+    ctx.request_context.request = None  # Not a Starlette Request
+
+    result = server.resolve_identity(ctx, "qa")
+    assert result == "qa", "Should fall back to user param on non-Request context"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_tools_receive_resolved_identity():
+    """
+    Verify that tools pass resolved identity to run_qms_command.
+
+    End-to-end test: a tool registered with resolve_identity should
+    call run_qms_command with the resolved identity, not the raw param.
+
+    Verifies: REQ-MCP-015
+    """
+    tools = get_tools_module_directly()
+
+    captured_calls = []
+    registered_funcs = {}
+
+    def capturing_decorator():
+        def decorator(func):
+            registered_funcs[func.__name__] = func
+            return func
+        return decorator
+
+    mock_mcp = MagicMock()
+    mock_mcp.tool = capturing_decorator
+
+    def capturing_run(args, user="claude"):
+        captured_calls.append({"args": args, "user": user})
+        return {"success": True, "output": "OK", "return_code": 0}
+
+    # resolve_identity that always returns "qa" (simulating HTTP enforcement)
+    def enforced_resolve(ctx, user="claude"):
+        return "qa"
+
+    tools.register_tools(mock_mcp, capturing_run, enforced_resolve)
+
+    ctx = make_mock_ctx()
+
+    # Call inbox with user="claude" -- resolve should override to "qa"
+    registered_funcs["qms_inbox"](ctx=ctx, user="claude")
+    assert captured_calls[-1]["user"] == "qa", "Tool should use resolved identity"
+
+    # Call status (no user param) -- resolve should return "qa"
+    registered_funcs["qms_status"](ctx=ctx, doc_id="SOP-001")
+    assert captured_calls[-1]["user"] == "qa", "Tool without user param should use resolved identity"
