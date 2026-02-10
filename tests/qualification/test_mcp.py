@@ -76,6 +76,20 @@ def get_tools_module_directly():
     return tools
 
 
+def make_mock_resolve_identity():
+    """Create a mock resolve_identity for stdio-mode simulation."""
+    def mock_resolve_identity(ctx, user="claude"):
+        return user
+    return mock_resolve_identity
+
+
+def make_mock_ctx():
+    """Create a mock Context for tool calls (simulates stdio transport)."""
+    ctx = MagicMock()
+    ctx.request_context = None
+    return ctx
+
+
 # ============================================================================
 # REQ-MCP-001: MCP Protocol Implementation
 # ============================================================================
@@ -120,7 +134,7 @@ def test_register_tools_creates_all_tools():
     mock_run = MagicMock(return_value={"success": True, "output": "test", "return_code": 0})
 
     # Register tools
-    tools.register_tools(mock_mcp, mock_run)
+    tools.register_tools(mock_mcp, mock_run, make_mock_resolve_identity())
 
     # Verify all expected tools are registered
     expected_tools = [
@@ -539,7 +553,8 @@ def test_qms_review_mcp_layer_recommend():
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Reviewed: SOP-001", "return_code": 0}
 
-    tools.register_tools(mock_mcp, capturing_run)
+    mock_resolve = make_mock_resolve_identity()
+    tools.register_tools(mock_mcp, capturing_run, mock_resolve)
 
     # Call the registered tool function with MCP parameters
     result = tools.register_tools.__code__  # Need to get the registered function
@@ -554,10 +569,11 @@ def test_qms_review_mcp_layer_recommend():
 
     mock_mcp2 = MagicMock()
     mock_mcp2.tool = capturing_decorator
-    tools.register_tools(mock_mcp2, capturing_run)
+    tools.register_tools(mock_mcp2, capturing_run, mock_resolve)
 
     # Call qms_review with recommend
-    result = registered_funcs["qms_review"](doc_id="SOP-001", outcome="recommend", comment="Looks good")
+    ctx = make_mock_ctx()
+    result = registered_funcs["qms_review"](ctx=ctx, doc_id="SOP-001", outcome="recommend", comment="Looks good")
 
     assert len(captured_calls) == 1
     assert captured_calls[0]["args"] == ["review", "SOP-001", "--recommend", "--comment", "Looks good"]
@@ -590,10 +606,11 @@ def test_qms_review_mcp_layer_request_updates():
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Reviewed: SOP-001", "return_code": 0}
 
-    tools.register_tools(mock_mcp, capturing_run)
+    tools.register_tools(mock_mcp, capturing_run, make_mock_resolve_identity())
 
     # Call qms_review with request-updates
-    result = registered_funcs["qms_review"](doc_id="CR-064", outcome="request-updates", comment="Needs work")
+    ctx = make_mock_ctx()
+    result = registered_funcs["qms_review"](ctx=ctx, doc_id="CR-064", outcome="request-updates", comment="Needs work")
 
     assert len(captured_calls) == 1
     assert captured_calls[0]["args"] == ["review", "CR-064", "--request-updates", "--comment", "Needs work"]
@@ -623,14 +640,16 @@ def test_qms_route_mcp_layer():
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Routed", "return_code": 0}
 
-    tools.register_tools(mock_mcp, capturing_run)
+    tools.register_tools(mock_mcp, capturing_run, make_mock_resolve_identity())
+
+    ctx = make_mock_ctx()
 
     # Test review routing
-    registered_funcs["qms_route"](doc_id="SOP-001", route_type="review")
+    registered_funcs["qms_route"](ctx=ctx, doc_id="SOP-001", route_type="review")
     assert captured_calls[-1]["args"] == ["route", "SOP-001", "--review"]
 
     # Test approval routing
-    registered_funcs["qms_route"](doc_id="SOP-001", route_type="approval")
+    registered_funcs["qms_route"](ctx=ctx, doc_id="SOP-001", route_type="approval")
     assert captured_calls[-1]["args"] == ["route", "SOP-001", "--approval"]
 
 
@@ -657,10 +676,11 @@ def test_qms_withdraw_mcp_layer():
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Withdrawn: SOP-001", "return_code": 0}
 
-    tools.register_tools(mock_mcp, capturing_run)
+    tools.register_tools(mock_mcp, capturing_run, make_mock_resolve_identity())
 
     # Call qms_withdraw
-    registered_funcs["qms_withdraw"](doc_id="SOP-001", user="claude")
+    ctx = make_mock_ctx()
+    registered_funcs["qms_withdraw"](ctx=ctx, doc_id="SOP-001", user="claude")
 
     assert len(captured_calls) == 1
     assert captured_calls[0]["args"] == ["withdraw", "SOP-001"]
@@ -853,13 +873,15 @@ def test_mcp_tool_returns_string():
     mock_mcp.tool = mock_tool_decorator
 
     # Register tools
-    tools.register_tools(mock_mcp, mock_run)
+    tools.register_tools(mock_mcp, mock_run, make_mock_resolve_identity())
+
+    ctx = make_mock_ctx()
 
     # Test that each tool returns a string
     test_cases = [
-        ("qms_inbox", {}),
-        ("qms_status", {"doc_id": "SOP-001"}),
-        ("qms_create", {"doc_type": "CR", "title": "Test"}),
+        ("qms_inbox", {"ctx": ctx}),
+        ("qms_status", {"ctx": ctx, "doc_id": "SOP-001"}),
+        ("qms_create", {"ctx": ctx, "doc_type": "CR", "title": "Test"}),
     ]
 
     for func_name, kwargs in test_cases:
@@ -934,7 +956,7 @@ def test_mcp_excludes_setup_commands():
     mock_run = MagicMock(return_value={"success": True, "output": "test", "return_code": 0})
 
     # Register tools
-    tools.register_tools(mock_mcp, mock_run)
+    tools.register_tools(mock_mcp, mock_run, make_mock_resolve_identity())
 
     # Verify excluded commands are NOT present
     excluded_commands = ["qms_init", "qms_namespace", "qms_user", "qms_migrate"]

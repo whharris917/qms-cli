@@ -4,7 +4,7 @@ QMS MCP Server
 Model Context Protocol server for the Quality Management System CLI.
 Exposes QMS operations as MCP tools for integration with Claude Code and other MCP clients.
 
-Requirements: REQ-MCP-001, REQ-MCP-002, REQ-MCP-011, REQ-MCP-012, REQ-MCP-013, REQ-MCP-014
+Requirements: REQ-MCP-001, REQ-MCP-002, REQ-MCP-011 through REQ-MCP-015
 """
 
 import argparse
@@ -14,7 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
+from starlette.requests import Request
 
 # Configure logging to stderr (CRITICAL: never write to stdout for stdio transport)
 logging.basicConfig(
@@ -26,6 +27,51 @@ logger = logging.getLogger("qms-mcp")
 
 # Initialize FastMCP server
 mcp = FastMCP("qms")
+
+# Known QMS agents (validated against .claude/agents/)
+KNOWN_AGENTS = {"lead", "claude", "qa", "bu", "tu_ui", "tu_scene", "tu_sketch", "tu_sim"}
+
+
+def resolve_identity(ctx: Context, user_param: str = "claude") -> str:
+    """
+    Resolve the effective QMS identity from transport context.
+
+    HTTP transport (containers): Identity from X-QMS-Identity header (enforced mode).
+    Stdio transport (host): Identity from user parameter (trusted mode).
+
+    Args:
+        ctx: FastMCP Context (injected by framework)
+        user_param: The user parameter from the tool call (fallback for stdio)
+
+    Returns:
+        The resolved QMS user identity string.
+
+    Requirements: REQ-MCP-015
+    """
+    try:
+        request_ctx = ctx.request_context
+        if request_ctx is not None:
+            request = request_ctx.request
+            if request is not None and isinstance(request, Request):
+                # HTTP transport -- enforced mode
+                identity = request.headers.get("x-qms-identity")
+                if identity:
+                    if identity not in KNOWN_AGENTS:
+                        logger.warning(f"Unknown agent identity in header: {identity}")
+                    if user_param != "claude" and user_param != identity:
+                        logger.warning(
+                            f"Identity mismatch: header={identity}, param={user_param}. "
+                            f"Using enforced identity: {identity}"
+                        )
+                    return identity
+                else:
+                    # HTTP request but no identity header -- log and fall through
+                    logger.warning("HTTP request without X-QMS-Identity header")
+    except (AttributeError, LookupError):
+        pass  # Stdio transport or no request context -- expected
+
+    # Stdio transport -- trusted mode (fallback)
+    return user_param
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -194,7 +240,7 @@ def main(cli_args: list[str] | None = None):
     # Import and register tools (deferred to avoid circular imports)
     from .tools import register_tools
 
-    register_tools(mcp, run_qms_command)
+    register_tools(mcp, run_qms_command, resolve_identity)
 
     # Run with selected transport (per REQ-MCP-011, REQ-MCP-014)
     if args.transport == "stdio":
