@@ -91,6 +91,25 @@ def make_mock_ctx():
 
 
 # ============================================================================
+# Identity Registry Cleanup Fixture (REQ-MCP-016)
+# ============================================================================
+# The identity registry in server.py is module-level state. Tests that create
+# mock HTTP contexts with X-QMS-Identity headers will inadvertently register
+# identities. This fixture ensures the registry is clean for each test.
+
+@pytest.fixture(autouse=True)
+def _clear_identity_registry():
+    """Clear the identity registry before and after each test."""
+    if mcp_package_available():
+        server = get_server_module()
+        server._identity_registry.clear()
+    yield
+    if mcp_package_available():
+        server = get_server_module()
+        server._identity_registry.clear()
+
+
+# ============================================================================
 # REQ-MCP-001: MCP Protocol Implementation
 # ============================================================================
 
@@ -1648,3 +1667,463 @@ def test_resolve_identity_tools_receive_resolved_identity():
     # Call status (no user param) -- resolve should return "qa"
     registered_funcs["qms_status"](ctx=ctx, doc_id="SOP-001")
     assert captured_calls[-1]["user"] == "qa", "Tool without user param should use resolved identity"
+
+
+# ============================================================================
+# REQ-MCP-016: Identity Collision Prevention
+# ============================================================================
+
+
+def make_mock_http_ctx(identity, instance_id="test-instance-001"):
+    """Create a mock HTTP Context with identity and instance headers."""
+    from starlette.requests import Request
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {
+        "x-qms-identity": identity,
+        "x-qms-instance": instance_id,
+    }
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+    return ctx
+
+
+def clear_identity_registry():
+    """Clear the identity registry for test isolation.
+
+    Note: The autouse fixture _clear_identity_registry handles this
+    automatically. This function is retained for explicit use in tests
+    that need mid-test cleanup.
+    """
+    server = get_server_module()
+    server._identity_registry.clear()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_collision_exception_class():
+    """
+    Verify IdentityCollisionError is defined and is a subclass of Exception.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+
+    assert hasattr(server, "IdentityCollisionError")
+    assert issubclass(server.IdentityCollisionError, Exception)
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_lock_ttl_constant():
+    """
+    Verify IDENTITY_LOCK_TTL_SECONDS exists and is a positive number.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+
+    assert hasattr(server, "IDENTITY_LOCK_TTL_SECONDS")
+    assert server.IDENTITY_LOCK_TTL_SECONDS > 0
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_collision_http_locks_stdio():
+    """
+    Verify HTTP enforced identity blocks same identity from stdio.
+
+    Register 'qa' via HTTP (simulated enforced mode), then attempt 'qa'
+    via stdio. The stdio request should be rejected with IdentityCollisionError.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        # Register qa via HTTP (enforced mode)
+        http_ctx = make_mock_http_ctx("qa", "instance-aaa-111")
+        result = server.resolve_identity(http_ctx, "claude")
+        assert result == "qa"
+
+        # Attempt qa via stdio -- should be blocked
+        stdio_ctx = MagicMock()
+        stdio_ctx.request_context = None
+
+        with pytest.raises(server.IdentityCollisionError):
+            server.resolve_identity(stdio_ctx, "qa")
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_collision_error_message_terminal():
+    """
+    Verify error message contains required terminal elements.
+
+    The error must include 'IDENTITY LOCKED' and 'Do not attempt to troubleshoot'
+    to prevent rejected agents from spiraling into retry/debug loops.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        # Register qa via HTTP
+        http_ctx = make_mock_http_ctx("qa", "instance-bbb-222")
+        server.resolve_identity(http_ctx, "claude")
+
+        # Attempt qa via stdio -- capture the error message
+        stdio_ctx = MagicMock()
+        stdio_ctx.request_context = None
+
+        with pytest.raises(server.IdentityCollisionError) as exc_info:
+            server.resolve_identity(stdio_ctx, "qa")
+
+        msg = str(exc_info.value)
+        assert "IDENTITY LOCKED" in msg, "Error must contain 'IDENTITY LOCKED'"
+        assert "Do not attempt to troubleshoot" in msg, (
+            "Error must contain 'Do not attempt to troubleshoot'"
+        )
+        # instance_id "instance-bbb-222"[:8] = "instance"
+        assert "instance-bbb-222"[:8] in msg, "Error must contain truncated instance ID"
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_lock_ttl_expiry():
+    """
+    Verify identity lock expires after TTL, allowing stdio access.
+
+    Register 'qa' via HTTP, advance time past TTL, then attempt 'qa'
+    via stdio. The stdio request should succeed.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        # Register qa via HTTP
+        http_ctx = make_mock_http_ctx("qa", "instance-ccc-333")
+        server.resolve_identity(http_ctx, "claude")
+
+        # Advance the lock's last_seen past TTL
+        lock = server._identity_registry["qa"]
+        lock.last_seen = lock.last_seen - server.IDENTITY_LOCK_TTL_SECONDS - 1
+
+        # Stdio should now succeed (lock expired)
+        stdio_ctx = MagicMock()
+        stdio_ctx.request_context = None
+        result = server.resolve_identity(stdio_ctx, "qa")
+        assert result == "qa"
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_lock_heartbeat_refreshes():
+    """
+    Verify HTTP heartbeat refreshes the lock, preventing TTL expiry.
+
+    Register 'qa' via HTTP, advance time to near TTL, make another HTTP
+    request (heartbeat), advance time past original TTL. Lock should
+    still be active.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        # Register qa via HTTP
+        http_ctx = make_mock_http_ctx("qa", "instance-ddd-444")
+        server.resolve_identity(http_ctx, "claude")
+
+        # Advance to near TTL
+        lock = server._identity_registry["qa"]
+        lock.last_seen = lock.last_seen - server.IDENTITY_LOCK_TTL_SECONDS + 10
+
+        # Heartbeat -- same instance, new request
+        http_ctx2 = make_mock_http_ctx("qa", "instance-ddd-444")
+        server.resolve_identity(http_ctx2, "claude")
+
+        # Lock should now have a fresh last_seen
+        # Stdio should still be blocked
+        stdio_ctx = MagicMock()
+        stdio_ctx.request_context = None
+        with pytest.raises(server.IdentityCollisionError):
+            server.resolve_identity(stdio_ctx, "qa")
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_collision_different_identities_ok():
+    """
+    Verify different identities don't collide.
+
+    Register 'qa' via HTTP, then attempt 'tu_ui' via stdio. The stdio
+    request should succeed because the identities are different.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        # Register qa via HTTP
+        http_ctx = make_mock_http_ctx("qa", "instance-eee-555")
+        server.resolve_identity(http_ctx, "claude")
+
+        # Attempt tu_ui via stdio -- should succeed (different identity)
+        stdio_ctx = MagicMock()
+        stdio_ctx.request_context = None
+        result = server.resolve_identity(stdio_ctx, "tu_ui")
+        assert result == "tu_ui"
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_collision_stdio_does_not_lock():
+    """
+    Verify stdio callers don't create locks (no self-collision).
+
+    Make two consecutive stdio requests with the same identity. Both
+    should succeed because stdio does not register locks.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        stdio_ctx = MagicMock()
+        stdio_ctx.request_context = None
+
+        result1 = server.resolve_identity(stdio_ctx, "qa")
+        assert result1 == "qa"
+
+        result2 = server.resolve_identity(stdio_ctx, "qa")
+        assert result2 == "qa"
+
+        # No locks should exist
+        assert len(server._identity_registry) == 0
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_collision_duplicate_container():
+    """
+    Verify second container claiming same identity is rejected.
+
+    Register 'qa' with instance_id A via HTTP, then attempt 'qa' with
+    instance_id B via HTTP. The second request should be rejected.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        # Register qa with instance A
+        http_ctx_a = make_mock_http_ctx("qa", "instance-aaa-111")
+        server.resolve_identity(http_ctx_a, "claude")
+
+        # Attempt qa with instance B -- should be rejected
+        http_ctx_b = make_mock_http_ctx("qa", "instance-bbb-222")
+        with pytest.raises(server.IdentityCollisionError) as exc_info:
+            server.resolve_identity(http_ctx_b, "claude")
+
+        msg = str(exc_info.value)
+        assert "IDENTITY LOCKED" in msg
+        assert "duplicate container" in msg.lower()
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_collision_same_instance_heartbeat():
+    """
+    Verify same container instance refreshes heartbeat without collision.
+
+    Register 'qa' with instance_id A, then make another HTTP request
+    with the same instance_id A. No collision should occur.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        instance_id = "instance-fff-666"
+        http_ctx1 = make_mock_http_ctx("qa", instance_id)
+        result1 = server.resolve_identity(http_ctx1, "claude")
+        assert result1 == "qa"
+
+        # Same instance, another request -- should succeed
+        http_ctx2 = make_mock_http_ctx("qa", instance_id)
+        result2 = server.resolve_identity(http_ctx2, "claude")
+        assert result2 == "qa"
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_collision_duplicate_after_ttl():
+    """
+    Verify duplicate container succeeds after original TTL expires.
+
+    Register 'qa' with instance_id A, advance past TTL, then register
+    with instance_id B. The second registration should succeed.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        # Register qa with instance A
+        http_ctx_a = make_mock_http_ctx("qa", "instance-ggg-777")
+        server.resolve_identity(http_ctx_a, "claude")
+
+        # Expire the lock
+        lock = server._identity_registry["qa"]
+        lock.last_seen = lock.last_seen - server.IDENTITY_LOCK_TTL_SECONDS - 1
+
+        # Register qa with instance B -- should succeed (lock expired)
+        http_ctx_b = make_mock_http_ctx("qa", "instance-hhh-888")
+        result = server.resolve_identity(http_ctx_b, "claude")
+        assert result == "qa"
+
+        # Verify new lock is for instance B
+        assert server._identity_registry["qa"].instance_id == "instance-hhh-888"
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_registry_cleanup():
+    """
+    Verify expired locks are cleaned up.
+
+    Register multiple identities, expire them, call resolve_identity
+    (which triggers lazy cleanup), verify registry is empty.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        # Register two identities
+        http_ctx_qa = make_mock_http_ctx("qa", "instance-iii-999")
+        server.resolve_identity(http_ctx_qa, "claude")
+
+        http_ctx_tu = make_mock_http_ctx("tu_ui", "instance-jjj-000")
+        server.resolve_identity(http_ctx_tu, "claude")
+
+        assert len(server._identity_registry) == 2
+
+        # Expire both locks
+        for lock in server._identity_registry.values():
+            lock.last_seen = lock.last_seen - server.IDENTITY_LOCK_TTL_SECONDS - 1
+
+        # Trigger lazy cleanup via a stdio resolve_identity call
+        stdio_ctx = MagicMock()
+        stdio_ctx.request_context = None
+        server.resolve_identity(stdio_ctx, "claude")
+
+        # Registry should be empty
+        assert len(server._identity_registry) == 0
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_lock_empty_instance_id():
+    """
+    Verify registration works with missing X-QMS-Instance header.
+
+    An HTTP request with X-QMS-Identity but no X-QMS-Instance should
+    still register (with empty instance_id). This handles the case where
+    the proxy does not inject the header.
+
+    Verifies: REQ-MCP-016
+    """
+    from starlette.requests import Request
+
+    server = get_server_module()
+    clear_identity_registry()
+
+    try:
+        # Create HTTP context WITHOUT x-qms-instance header
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = {"x-qms-identity": "qa"}
+
+        mock_request_ctx = MagicMock()
+        mock_request_ctx.request = mock_request
+
+        ctx = MagicMock()
+        ctx.request_context = mock_request_ctx
+
+        result = server.resolve_identity(ctx, "claude")
+        assert result == "qa"
+
+        # Lock should exist with empty instance_id
+        assert "qa" in server._identity_registry
+        assert server._identity_registry["qa"].instance_id == ""
+    finally:
+        clear_identity_registry()
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_identity_collision_tool_returns_error():
+    """
+    Verify end-to-end: tool call with colliding identity propagates error.
+
+    Register 'qa' via HTTP, then call a tool function with stdio context
+    and user='qa'. The IdentityCollisionError should propagate.
+
+    Verifies: REQ-MCP-016
+    """
+    server = get_server_module()
+    tools = get_tools_module_directly()
+    clear_identity_registry()
+
+    try:
+        # Register qa via HTTP using real resolve_identity
+        http_ctx = make_mock_http_ctx("qa", "instance-kkk-111")
+        server.resolve_identity(http_ctx, "claude")
+
+        # Set up tool with real resolve_identity
+        registered_funcs = {}
+
+        def capturing_decorator():
+            def decorator(func):
+                registered_funcs[func.__name__] = func
+                return func
+            return decorator
+
+        mock_mcp = MagicMock()
+        mock_mcp.tool = capturing_decorator
+
+        def mock_run(args, user="claude"):
+            return {"success": True, "output": "OK", "return_code": 0}
+
+        tools.register_tools(mock_mcp, mock_run, server.resolve_identity)
+
+        # Call inbox with stdio context and user="qa" -- should raise
+        stdio_ctx = MagicMock()
+        stdio_ctx.request_context = None
+
+        with pytest.raises(server.IdentityCollisionError):
+            registered_funcs["qms_inbox"](ctx=stdio_ctx, user="qa")
+    finally:
+        clear_identity_registry()

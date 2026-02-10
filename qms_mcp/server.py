@@ -4,7 +4,7 @@ QMS MCP Server
 Model Context Protocol server for the Quality Management System CLI.
 Exposes QMS operations as MCP tools for integration with Claude Code and other MCP clients.
 
-Requirements: REQ-MCP-001, REQ-MCP-002, REQ-MCP-011 through REQ-MCP-015
+Requirements: REQ-MCP-001, REQ-MCP-002, REQ-MCP-011 through REQ-MCP-016
 """
 
 import argparse
@@ -12,6 +12,8 @@ import logging
 import os
 import subprocess
 import sys
+import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -32,12 +34,123 @@ mcp = FastMCP("qms")
 KNOWN_AGENTS = {"lead", "claude", "qa", "bu", "tu_ui", "tu_scene", "tu_sketch", "tu_sim"}
 
 
+# ---------------------------------------------------------------------------
+# Identity collision prevention (REQ-MCP-016)
+# ---------------------------------------------------------------------------
+
+
+class IdentityCollisionError(Exception):
+    """Raised when an identity is locked by another instance."""
+
+    pass
+
+
+@dataclass
+class IdentityLock:
+    """Represents an active identity claim from an enforced-mode caller."""
+
+    instance_id: str  # UUID from X-QMS-Instance header
+    last_seen: float  # time.monotonic() timestamp
+    identity: str  # The claimed identity (e.g., "qa")
+
+
+# TTL for identity locks. After this duration without a heartbeat (HTTP request),
+# the lock expires and the identity becomes available again. 5 minutes is long
+# enough to span idle gaps between MCP calls but short enough for crash recovery.
+IDENTITY_LOCK_TTL_SECONDS: float = 300.0
+
+# In-memory registry mapping identity -> IdentityLock.
+# Thread safety note: FastMCP with uvicorn uses a single event loop thread for
+# request handling, so no mutex is needed. If multi-worker is ever enabled,
+# a threading.Lock would be required here.
+_identity_registry: dict[str, IdentityLock] = {}
+
+
+def _cleanup_expired_locks() -> None:
+    """Remove expired identity locks from the registry."""
+    now = time.monotonic()
+    expired = [
+        identity
+        for identity, lock in _identity_registry.items()
+        if now - lock.last_seen > IDENTITY_LOCK_TTL_SECONDS
+    ]
+    for identity in expired:
+        logger.info(f"Cleanup: expired identity lock for '{identity}'")
+        del _identity_registry[identity]
+
+
+def _register_identity(identity: str, instance_id: str) -> None:
+    """Register an enforced-mode identity, detecting duplicate containers.
+
+    Called on every HTTP identity resolution. Same instance_id refreshes the
+    heartbeat. Different instance_id with a non-expired lock raises
+    IdentityCollisionError (Scenario B: duplicate containers).
+
+    Requirements: REQ-MCP-016
+    """
+    existing = _identity_registry.get(identity)
+    if existing is not None:
+        if existing.instance_id == instance_id:
+            # Same instance (same container, subsequent request) -- heartbeat
+            existing.last_seen = time.monotonic()
+            return
+
+        if time.monotonic() - existing.last_seen <= IDENTITY_LOCK_TTL_SECONDS:
+            # Different instance, lock still active -- duplicate container
+            raise IdentityCollisionError(
+                f"IDENTITY LOCKED: '{identity}' is already registered to "
+                f"container instance {existing.instance_id[:8]}. "
+                f"This container instance ({instance_id[:8]}) cannot claim "
+                f"the same identity. This indicates a duplicate container. "
+                f"Do not attempt to troubleshoot -- stop one of the "
+                f"duplicate containers."
+            )
+        else:
+            # Expired lock -- clean up and allow registration
+            logger.info(
+                f"Expired identity lock for '{identity}' "
+                f"(instance {existing.instance_id[:8]})"
+            )
+
+    _identity_registry[identity] = IdentityLock(
+        instance_id=instance_id,
+        last_seen=time.monotonic(),
+        identity=identity,
+    )
+    logger.info(f"Identity '{identity}' registered (instance {instance_id[:8]})")
+
+
+def _check_identity_available(identity: str) -> IdentityLock | None:
+    """Check if an identity is locked by an enforced-mode caller.
+
+    Returns the lock if active, None if available.
+
+    Requirements: REQ-MCP-016
+    """
+    lock = _identity_registry.get(identity)
+    if lock is None:
+        return None
+
+    if time.monotonic() - lock.last_seen > IDENTITY_LOCK_TTL_SECONDS:
+        # Expired -- clean up
+        del _identity_registry[identity]
+        logger.info(f"Expired identity lock for '{identity}' cleaned up")
+        return None
+
+    return lock
+
+
 def resolve_identity(ctx: Context, user_param: str = "claude") -> str:
     """
     Resolve the effective QMS identity from transport context.
 
     HTTP transport (containers): Identity from X-QMS-Identity header (enforced mode).
     Stdio transport (host): Identity from user parameter (trusted mode).
+
+    Identity collision prevention (REQ-MCP-016):
+    - HTTP callers register their identity in the in-memory registry.
+    - Stdio callers are rejected if the identity is locked by an HTTP caller.
+    - Duplicate HTTP callers (different instance_id) are rejected.
 
     Args:
         ctx: FastMCP Context (injected by framework)
@@ -46,8 +159,13 @@ def resolve_identity(ctx: Context, user_param: str = "claude") -> str:
     Returns:
         The resolved QMS user identity string.
 
-    Requirements: REQ-MCP-015
+    Raises:
+        IdentityCollisionError: If the identity is locked by another instance.
+
+    Requirements: REQ-MCP-015, REQ-MCP-016
     """
+    _cleanup_expired_locks()
+
     try:
         request_ctx = ctx.request_context
         if request_ctx is not None:
@@ -63,14 +181,33 @@ def resolve_identity(ctx: Context, user_param: str = "claude") -> str:
                             f"Identity mismatch: header={identity}, param={user_param}. "
                             f"Using enforced identity: {identity}"
                         )
+
+                    # Register enforced identity (REQ-MCP-016)
+                    instance_id = request.headers.get("x-qms-instance", "")
+                    _register_identity(identity, instance_id)
+
                     return identity
                 else:
                     # HTTP request but no identity header -- log and fall through
                     logger.warning("HTTP request without X-QMS-Identity header")
+    except IdentityCollisionError:
+        raise  # Propagate collision errors (REQ-MCP-016)
     except (AttributeError, LookupError):
         pass  # Stdio transport or no request context -- expected
 
     # Stdio transport -- trusted mode (fallback)
+    # Check for identity collision before allowing (REQ-MCP-016)
+    lock = _check_identity_available(user_param)
+    if lock is not None:
+        raise IdentityCollisionError(
+            f"IDENTITY LOCKED: '{user_param}' is active in enforced mode "
+            f"(container instance {lock.instance_id[:8]}). "
+            f"Stdio request rejected. This identity is exclusively held by "
+            f"a running container. "
+            f"Do not attempt to troubleshoot -- the container is the "
+            f"authoritative holder of this identity."
+        )
+
     return user_param
 
 
