@@ -142,19 +142,20 @@ def _check_identity_available(identity: str) -> IdentityLock | None:
 
 def resolve_identity(ctx: Context, user_param: str = "claude") -> str:
     """
-    Resolve the effective QMS identity from transport context.
+    Resolve the effective QMS identity from request context.
 
-    HTTP transport (containers): Identity from X-QMS-Identity header (enforced mode).
-    Stdio transport (host): Identity from user parameter (trusted mode).
+    Header-based mode selection (REQ-MCP-015):
+    - X-QMS-Identity header present → Enforced mode (use header value)
+    - X-QMS-Identity header absent → Trusted mode (use user parameter)
 
     Identity collision prevention (REQ-MCP-016):
-    - HTTP callers register their identity in the in-memory registry.
-    - Stdio callers are rejected if the identity is locked by an HTTP caller.
-    - Duplicate HTTP callers (different instance_id) are rejected.
+    - Enforced-mode callers register their identity in the in-memory registry.
+    - Trusted-mode callers are rejected if the identity is locked by an enforced-mode caller.
+    - Duplicate enforced-mode callers (different instance_id) are rejected.
 
     Args:
         ctx: FastMCP Context (injected by framework)
-        user_param: The user parameter from the tool call (fallback for stdio)
+        user_param: The user parameter from the tool call (used in trusted mode)
 
     Returns:
         The resolved QMS user identity string.
@@ -171,9 +172,10 @@ def resolve_identity(ctx: Context, user_param: str = "claude") -> str:
         if request_ctx is not None:
             request = request_ctx.request
             if request is not None and isinstance(request, Request):
-                # HTTP transport -- enforced mode
+                # HTTP request -- determine mode from header presence
                 identity = request.headers.get("x-qms-identity")
                 if identity:
+                    # Enforced mode: header present
                     if identity not in KNOWN_AGENTS:
                         logger.warning(f"Unknown agent identity in header: {identity}")
                     if user_param != "claude" and user_param != identity:
@@ -188,21 +190,33 @@ def resolve_identity(ctx: Context, user_param: str = "claude") -> str:
 
                     return identity
                 else:
-                    # HTTP request but no identity header -- log and fall through
-                    logger.warning("HTTP request without X-QMS-Identity header")
+                    # Trusted mode: header absent (REQ-MCP-015)
+                    # Check for identity collision before allowing (REQ-MCP-016)
+                    lock = _check_identity_available(user_param)
+                    if lock is not None:
+                        raise IdentityCollisionError(
+                            f"IDENTITY LOCKED: '{user_param}' is active in enforced mode "
+                            f"(container instance {lock.instance_id[:8]}). "
+                            f"Trusted-mode request rejected. This identity is exclusively "
+                            f"held by a running container. "
+                            f"Do not attempt to troubleshoot -- the container is the "
+                            f"authoritative holder of this identity."
+                        )
+                    return user_param
     except IdentityCollisionError:
         raise  # Propagate collision errors (REQ-MCP-016)
     except (AttributeError, LookupError):
-        pass  # Stdio transport or no request context -- expected
+        pass  # No request context available -- defensive fallback
 
-    # Stdio transport -- trusted mode (fallback)
+    # Defensive fallback: no request context available
+    # (e.g., testing, future transport changes)
     # Check for identity collision before allowing (REQ-MCP-016)
     lock = _check_identity_available(user_param)
     if lock is not None:
         raise IdentityCollisionError(
             f"IDENTITY LOCKED: '{user_param}' is active in enforced mode "
             f"(container instance {lock.instance_id[:8]}). "
-            f"Stdio request rejected. This identity is exclusively held by "
+            f"Request rejected. This identity is exclusively held by "
             f"a running container. "
             f"Do not attempt to troubleshoot -- the container is the "
             f"authoritative holder of this identity."
