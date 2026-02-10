@@ -76,6 +76,20 @@ def get_tools_module_directly():
     return tools
 
 
+def make_mock_resolve_identity():
+    """Create a mock resolve_identity for stdio-mode simulation."""
+    def mock_resolve_identity(ctx, user="claude"):
+        return user
+    return mock_resolve_identity
+
+
+def make_mock_ctx():
+    """Create a mock Context for tool calls (simulates stdio transport)."""
+    ctx = MagicMock()
+    ctx.request_context = None
+    return ctx
+
+
 # ============================================================================
 # REQ-MCP-001: MCP Protocol Implementation
 # ============================================================================
@@ -120,7 +134,7 @@ def test_register_tools_creates_all_tools():
     mock_run = MagicMock(return_value={"success": True, "output": "test", "return_code": 0})
 
     # Register tools
-    tools.register_tools(mock_mcp, mock_run)
+    tools.register_tools(mock_mcp, mock_run, make_mock_resolve_identity())
 
     # Verify all expected tools are registered
     expected_tools = [
@@ -539,7 +553,8 @@ def test_qms_review_mcp_layer_recommend():
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Reviewed: SOP-001", "return_code": 0}
 
-    tools.register_tools(mock_mcp, capturing_run)
+    mock_resolve = make_mock_resolve_identity()
+    tools.register_tools(mock_mcp, capturing_run, mock_resolve)
 
     # Call the registered tool function with MCP parameters
     result = tools.register_tools.__code__  # Need to get the registered function
@@ -554,10 +569,11 @@ def test_qms_review_mcp_layer_recommend():
 
     mock_mcp2 = MagicMock()
     mock_mcp2.tool = capturing_decorator
-    tools.register_tools(mock_mcp2, capturing_run)
+    tools.register_tools(mock_mcp2, capturing_run, mock_resolve)
 
     # Call qms_review with recommend
-    result = registered_funcs["qms_review"](doc_id="SOP-001", outcome="recommend", comment="Looks good")
+    ctx = make_mock_ctx()
+    result = registered_funcs["qms_review"](ctx=ctx, doc_id="SOP-001", outcome="recommend", comment="Looks good")
 
     assert len(captured_calls) == 1
     assert captured_calls[0]["args"] == ["review", "SOP-001", "--recommend", "--comment", "Looks good"]
@@ -590,10 +606,11 @@ def test_qms_review_mcp_layer_request_updates():
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Reviewed: SOP-001", "return_code": 0}
 
-    tools.register_tools(mock_mcp, capturing_run)
+    tools.register_tools(mock_mcp, capturing_run, make_mock_resolve_identity())
 
     # Call qms_review with request-updates
-    result = registered_funcs["qms_review"](doc_id="CR-064", outcome="request-updates", comment="Needs work")
+    ctx = make_mock_ctx()
+    result = registered_funcs["qms_review"](ctx=ctx, doc_id="CR-064", outcome="request-updates", comment="Needs work")
 
     assert len(captured_calls) == 1
     assert captured_calls[0]["args"] == ["review", "CR-064", "--request-updates", "--comment", "Needs work"]
@@ -623,14 +640,16 @@ def test_qms_route_mcp_layer():
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Routed", "return_code": 0}
 
-    tools.register_tools(mock_mcp, capturing_run)
+    tools.register_tools(mock_mcp, capturing_run, make_mock_resolve_identity())
+
+    ctx = make_mock_ctx()
 
     # Test review routing
-    registered_funcs["qms_route"](doc_id="SOP-001", route_type="review")
+    registered_funcs["qms_route"](ctx=ctx, doc_id="SOP-001", route_type="review")
     assert captured_calls[-1]["args"] == ["route", "SOP-001", "--review"]
 
     # Test approval routing
-    registered_funcs["qms_route"](doc_id="SOP-001", route_type="approval")
+    registered_funcs["qms_route"](ctx=ctx, doc_id="SOP-001", route_type="approval")
     assert captured_calls[-1]["args"] == ["route", "SOP-001", "--approval"]
 
 
@@ -657,10 +676,11 @@ def test_qms_withdraw_mcp_layer():
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Withdrawn: SOP-001", "return_code": 0}
 
-    tools.register_tools(mock_mcp, capturing_run)
+    tools.register_tools(mock_mcp, capturing_run, make_mock_resolve_identity())
 
     # Call qms_withdraw
-    registered_funcs["qms_withdraw"](doc_id="SOP-001", user="claude")
+    ctx = make_mock_ctx()
+    registered_funcs["qms_withdraw"](ctx=ctx, doc_id="SOP-001", user="claude")
 
     assert len(captured_calls) == 1
     assert captured_calls[0]["args"] == ["withdraw", "SOP-001"]
@@ -853,13 +873,15 @@ def test_mcp_tool_returns_string():
     mock_mcp.tool = mock_tool_decorator
 
     # Register tools
-    tools.register_tools(mock_mcp, mock_run)
+    tools.register_tools(mock_mcp, mock_run, make_mock_resolve_identity())
+
+    ctx = make_mock_ctx()
 
     # Test that each tool returns a string
     test_cases = [
-        ("qms_inbox", {}),
-        ("qms_status", {"doc_id": "SOP-001"}),
-        ("qms_create", {"doc_type": "CR", "title": "Test"}),
+        ("qms_inbox", {"ctx": ctx}),
+        ("qms_status", {"ctx": ctx, "doc_id": "SOP-001"}),
+        ("qms_create", {"ctx": ctx, "doc_type": "CR", "title": "Test"}),
     ]
 
     for func_name, kwargs in test_cases:
@@ -934,7 +956,7 @@ def test_mcp_excludes_setup_commands():
     mock_run = MagicMock(return_value={"success": True, "output": "test", "return_code": 0})
 
     # Register tools
-    tools.register_tools(mock_mcp, mock_run)
+    tools.register_tools(mock_mcp, mock_run, make_mock_resolve_identity())
 
     # Verify excluded commands are NOT present
     excluded_commands = ["qms_init", "qms_namespace", "qms_user", "qms_migrate"]
@@ -1393,3 +1415,236 @@ def test_mcp_streamable_http_is_recommended_over_sse():
     # Verify help text indicates SSE is deprecated and streamable-http is recommended
     assert "deprecated" in help_text.lower(), "Help text should indicate SSE is deprecated"
     assert "recommended" in help_text.lower(), "Help text should indicate streamable-http is recommended"
+
+
+# ============================================================================
+# REQ-MCP-015: Transport-Based Identity Resolution
+# ============================================================================
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_stdio_default():
+    """
+    Verify resolve_identity returns default 'claude' for stdio transport.
+
+    Stdio transport has no HTTP request context, so resolve_identity should
+    fall back to the user_param default.
+
+    Verifies: REQ-MCP-015
+    """
+    server = get_server_module()
+
+    ctx = MagicMock()
+    ctx.request_context = None  # Stdio transport
+
+    result = server.resolve_identity(ctx)
+    assert result == "claude", "Default identity should be 'claude' for stdio"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_stdio_custom_user():
+    """
+    Verify resolve_identity returns custom user_param for stdio transport.
+
+    When an agent self-declares identity via user parameter on stdio,
+    the system trusts it (no header enforcement).
+
+    Verifies: REQ-MCP-015
+    """
+    server = get_server_module()
+
+    ctx = MagicMock()
+    ctx.request_context = None  # Stdio transport
+
+    result = server.resolve_identity(ctx, "qa")
+    assert result == "qa", "Custom user should be returned for stdio transport"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_http_header_enforced():
+    """
+    Verify resolve_identity uses X-QMS-Identity header for HTTP transport.
+
+    When an HTTP request carries the identity header, the header value
+    takes precedence over the user parameter (enforced mode).
+
+    Verifies: REQ-MCP-015
+    """
+    from starlette.requests import Request
+    from starlette.testclient import TestClient
+
+    server = get_server_module()
+
+    # Create a mock Starlette Request with the identity header
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {"x-qms-identity": "qa"}
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+
+    # Header should override the default user param
+    result = server.resolve_identity(ctx, "claude")
+    assert result == "qa", "HTTP header should enforce identity as 'qa'"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_http_header_overrides_user_param():
+    """
+    Verify HTTP header identity overrides mismatched user parameter.
+
+    When the header says 'qa' but the user param says 'tu_ui',
+    the header wins (enforced mode). A warning should be logged.
+
+    Verifies: REQ-MCP-015
+    """
+    from starlette.requests import Request
+
+    server = get_server_module()
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {"x-qms-identity": "qa"}
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+
+    # Header 'qa' should override user param 'tu_ui'
+    result = server.resolve_identity(ctx, "tu_ui")
+    assert result == "qa", "HTTP header should override user param"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_http_no_header_falls_back():
+    """
+    Verify resolve_identity falls back to user_param when HTTP header is missing.
+
+    An HTTP request without X-QMS-Identity should fall through to the
+    user parameter (degraded mode with warning).
+
+    Verifies: REQ-MCP-015
+    """
+    from starlette.requests import Request
+
+    server = get_server_module()
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {}  # No identity header
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+
+    result = server.resolve_identity(ctx, "claude")
+    assert result == "claude", "Missing header should fall back to user param"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_unknown_agent_still_resolves():
+    """
+    Verify resolve_identity accepts unknown agent identities from headers.
+
+    Unknown agents are warned about but still accepted -- the identity
+    resolution layer does not enforce authorization.
+
+    Verifies: REQ-MCP-015
+    """
+    from starlette.requests import Request
+
+    server = get_server_module()
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {"x-qms-identity": "unknown_agent"}
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+
+    result = server.resolve_identity(ctx, "claude")
+    assert result == "unknown_agent", "Unknown agents should still resolve from header"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_known_agents_set():
+    """
+    Verify KNOWN_AGENTS contains all expected agent identities.
+
+    Verifies: REQ-MCP-015
+    """
+    server = get_server_module()
+
+    expected = {"lead", "claude", "qa", "bu", "tu_ui", "tu_scene", "tu_sketch", "tu_sim"}
+    assert server.KNOWN_AGENTS == expected, f"KNOWN_AGENTS mismatch: {server.KNOWN_AGENTS}"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_attribute_error_falls_back():
+    """
+    Verify resolve_identity handles AttributeError gracefully.
+
+    If the context chain raises AttributeError (e.g., unexpected context
+    structure), the function should fall back to user_param.
+
+    Verifies: REQ-MCP-015
+    """
+    server = get_server_module()
+
+    # Context that raises AttributeError on access
+    ctx = MagicMock()
+    ctx.request_context = MagicMock()
+    ctx.request_context.request = None  # Not a Starlette Request
+
+    result = server.resolve_identity(ctx, "qa")
+    assert result == "qa", "Should fall back to user param on non-Request context"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_tools_receive_resolved_identity():
+    """
+    Verify that tools pass resolved identity to run_qms_command.
+
+    End-to-end test: a tool registered with resolve_identity should
+    call run_qms_command with the resolved identity, not the raw param.
+
+    Verifies: REQ-MCP-015
+    """
+    tools = get_tools_module_directly()
+
+    captured_calls = []
+    registered_funcs = {}
+
+    def capturing_decorator():
+        def decorator(func):
+            registered_funcs[func.__name__] = func
+            return func
+        return decorator
+
+    mock_mcp = MagicMock()
+    mock_mcp.tool = capturing_decorator
+
+    def capturing_run(args, user="claude"):
+        captured_calls.append({"args": args, "user": user})
+        return {"success": True, "output": "OK", "return_code": 0}
+
+    # resolve_identity that always returns "qa" (simulating HTTP enforcement)
+    def enforced_resolve(ctx, user="claude"):
+        return "qa"
+
+    tools.register_tools(mock_mcp, capturing_run, enforced_resolve)
+
+    ctx = make_mock_ctx()
+
+    # Call inbox with user="claude" -- resolve should override to "qa"
+    registered_funcs["qms_inbox"](ctx=ctx, user="claude")
+    assert captured_calls[-1]["user"] == "qa", "Tool should use resolved identity"
+
+    # Call status (no user param) -- resolve should return "qa"
+    registered_funcs["qms_status"](ctx=ctx, doc_id="SOP-001")
+    assert captured_calls[-1]["user"] == "qa", "Tool without user param should use resolved identity"
