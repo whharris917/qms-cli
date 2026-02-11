@@ -78,7 +78,7 @@ def get_tools_module_directly():
 
 def make_mock_resolve_identity():
     """Create a mock resolve_identity for stdio-mode simulation."""
-    def mock_resolve_identity(ctx, user="claude"):
+    def mock_resolve_identity(ctx, user):
         return user
     return mock_resolve_identity
 
@@ -568,7 +568,7 @@ def test_qms_review_mcp_layer_recommend():
 
     mock_mcp.tool = mock_tool_decorator
 
-    def capturing_run(args, user="claude"):
+    def capturing_run(args, user):
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Reviewed: SOP-001", "return_code": 0}
 
@@ -592,7 +592,7 @@ def test_qms_review_mcp_layer_recommend():
 
     # Call qms_review with recommend
     ctx = make_mock_ctx()
-    result = registered_funcs["qms_review"](ctx=ctx, doc_id="SOP-001", outcome="recommend", comment="Looks good")
+    result = registered_funcs["qms_review"](ctx=ctx, doc_id="SOP-001", outcome="recommend", user="claude", comment="Looks good")
 
     assert len(captured_calls) == 1
     assert captured_calls[0]["args"] == ["review", "SOP-001", "--recommend", "--comment", "Looks good"]
@@ -621,7 +621,7 @@ def test_qms_review_mcp_layer_request_updates():
     mock_mcp = MagicMock()
     mock_mcp.tool = capturing_decorator
 
-    def capturing_run(args, user="claude"):
+    def capturing_run(args, user):
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Reviewed: SOP-001", "return_code": 0}
 
@@ -629,7 +629,7 @@ def test_qms_review_mcp_layer_request_updates():
 
     # Call qms_review with request-updates
     ctx = make_mock_ctx()
-    result = registered_funcs["qms_review"](ctx=ctx, doc_id="CR-064", outcome="request-updates", comment="Needs work")
+    result = registered_funcs["qms_review"](ctx=ctx, doc_id="CR-064", outcome="request-updates", user="claude", comment="Needs work")
 
     assert len(captured_calls) == 1
     assert captured_calls[0]["args"] == ["review", "CR-064", "--request-updates", "--comment", "Needs work"]
@@ -655,7 +655,7 @@ def test_qms_route_mcp_layer():
     mock_mcp = MagicMock()
     mock_mcp.tool = capturing_decorator
 
-    def capturing_run(args, user="claude"):
+    def capturing_run(args, user):
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Routed", "return_code": 0}
 
@@ -664,11 +664,11 @@ def test_qms_route_mcp_layer():
     ctx = make_mock_ctx()
 
     # Test review routing
-    registered_funcs["qms_route"](ctx=ctx, doc_id="SOP-001", route_type="review")
+    registered_funcs["qms_route"](ctx=ctx, doc_id="SOP-001", route_type="review", user="claude")
     assert captured_calls[-1]["args"] == ["route", "SOP-001", "--review"]
 
     # Test approval routing
-    registered_funcs["qms_route"](ctx=ctx, doc_id="SOP-001", route_type="approval")
+    registered_funcs["qms_route"](ctx=ctx, doc_id="SOP-001", route_type="approval", user="claude")
     assert captured_calls[-1]["args"] == ["route", "SOP-001", "--approval"]
 
 
@@ -691,7 +691,7 @@ def test_qms_withdraw_mcp_layer():
     mock_mcp = MagicMock()
     mock_mcp.tool = capturing_decorator
 
-    def capturing_run(args, user="claude"):
+    def capturing_run(args, user):
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "Withdrawn: SOP-001", "return_code": 0}
 
@@ -876,7 +876,7 @@ def test_mcp_tool_returns_string():
     tools = get_tools_module_directly()
 
     # Mock run_qms_command to return test data
-    def mock_run(args, user="claude"):
+    def mock_run(args, user):
         return {"success": True, "output": "Test output", "return_code": 0}
 
     # Mock the mcp decorator
@@ -898,9 +898,9 @@ def test_mcp_tool_returns_string():
 
     # Test that each tool returns a string
     test_cases = [
-        ("qms_inbox", {"ctx": ctx}),
-        ("qms_status", {"ctx": ctx, "doc_id": "SOP-001"}),
-        ("qms_create", {"ctx": ctx, "doc_type": "CR", "title": "Test"}),
+        ("qms_inbox", {"ctx": ctx, "user": "claude"}),
+        ("qms_status", {"ctx": ctx, "doc_id": "SOP-001", "user": "claude"}),
+        ("qms_create", {"ctx": ctx, "doc_type": "CR", "title": "Test", "user": "claude"}),
     ]
 
     for func_name, kwargs in test_cases:
@@ -1441,30 +1441,52 @@ def test_mcp_streamable_http_is_recommended_over_sse():
 # ============================================================================
 
 @pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
-def test_resolve_identity_no_context_default():
+def test_resolve_identity_missing_user_raises_error():
     """
-    Verify resolve_identity returns default 'claude' when no request context.
+    Verify resolve_identity raises TypeError when user_param is omitted.
 
-    Defensive fallback: no HTTP request context available, so resolve_identity
-    should use the user_param default.
+    With no default, calling resolve_identity(ctx) without user_param
+    should raise TypeError.
 
     Verifies: REQ-MCP-015
     """
     server = get_server_module()
 
     ctx = MagicMock()
-    ctx.request_context = None  # No request context (defensive fallback)
+    ctx.request_context = None
 
-    result = server.resolve_identity(ctx)
-    assert result == "claude", "Default identity should be 'claude' without request context"
+    with pytest.raises(TypeError):
+        server.resolve_identity(ctx)
 
 
 @pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
-def test_resolve_identity_no_context_custom_user():
+def test_resolve_identity_empty_user_raises_error():
+    """
+    Verify resolve_identity raises ValueError for empty or whitespace user.
+
+    Empty string and whitespace-only strings should be rejected with
+    a helpful error message.
+
+    Verifies: REQ-MCP-015
+    """
+    server = get_server_module()
+
+    ctx = MagicMock()
+    ctx.request_context = None
+
+    with pytest.raises(ValueError, match="IDENTITY REQUIRED"):
+        server.resolve_identity(ctx, "")
+
+    with pytest.raises(ValueError, match="IDENTITY REQUIRED"):
+        server.resolve_identity(ctx, "   ")
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_stdio_mode_custom_user():
     """
     Verify resolve_identity returns custom user_param when no request context.
 
-    Defensive fallback: when no request context is available, the system
+    Stdio/non-HTTP context: when no request context is available, the system
     uses the user parameter in trusted mode.
 
     Verifies: REQ-MCP-015
@@ -1503,18 +1525,18 @@ def test_resolve_identity_http_header_enforced():
     ctx = MagicMock()
     ctx.request_context = mock_request_ctx
 
-    # Header should override the default user param
-    result = server.resolve_identity(ctx, "claude")
+    # Header matches user param — enforced mode succeeds
+    result = server.resolve_identity(ctx, "qa")
     assert result == "qa", "HTTP header should enforce identity as 'qa'"
 
 
 @pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
-def test_resolve_identity_http_header_overrides_user_param():
+def test_resolve_identity_enforced_mode_mismatch_raises_error():
     """
-    Verify HTTP header identity overrides mismatched user parameter.
+    Verify enforced mode raises ValueError on identity mismatch.
 
     When the header says 'qa' but the user param says 'tu_ui',
-    the header wins (enforced mode). A warning should be logged.
+    a ValueError is raised with a helpful message.
 
     Verifies: REQ-MCP-015
     """
@@ -1531,9 +1553,9 @@ def test_resolve_identity_http_header_overrides_user_param():
     ctx = MagicMock()
     ctx.request_context = mock_request_ctx
 
-    # Header 'qa' should override user param 'tu_ui'
-    result = server.resolve_identity(ctx, "tu_ui")
-    assert result == "qa", "HTTP header should override user param"
+    # Header 'qa' mismatches user param 'tu_ui' -- should raise ValueError
+    with pytest.raises(ValueError, match="IDENTITY MISMATCH"):
+        server.resolve_identity(ctx, "tu_ui")
 
 
 @pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
@@ -1586,7 +1608,7 @@ def test_resolve_identity_unknown_agent_still_resolves():
     ctx = MagicMock()
     ctx.request_context = mock_request_ctx
 
-    result = server.resolve_identity(ctx, "claude")
+    result = server.resolve_identity(ctx, "unknown_agent")
     assert result == "unknown_agent", "Unknown agents should still resolve from header"
 
 
@@ -1604,24 +1626,84 @@ def test_known_agents_set():
 
 
 @pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
-def test_resolve_identity_attribute_error_defensive_fallback():
+def test_resolve_identity_non_starlette_context_uses_trusted_mode():
     """
-    Verify resolve_identity handles AttributeError gracefully.
+    Verify resolve_identity uses trusted mode for non-Starlette contexts.
 
-    If the context chain raises AttributeError (e.g., unexpected context
-    structure), the function should use user_param via defensive fallback.
+    If the context chain has a request that is not a Starlette Request,
+    the function should use user_param via the explicit non-HTTP path.
 
     Verifies: REQ-MCP-015
     """
     server = get_server_module()
 
-    # Context that raises AttributeError on access
+    # Context with a non-Starlette request object
     ctx = MagicMock()
     ctx.request_context = MagicMock()
     ctx.request_context.request = None  # Not a Starlette Request
 
     result = server.resolve_identity(ctx, "qa")
-    assert result == "qa", "Should use user param on non-Request context (defensive fallback)"
+    assert result == "qa", "Should use user param on non-Request context (trusted mode)"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_enforced_mode_match_succeeds():
+    """
+    Verify enforced mode succeeds when user param matches header.
+
+    When the header says 'qa' and the user param also says 'qa',
+    the identity resolves successfully.
+
+    Verifies: REQ-MCP-015
+    """
+    from starlette.requests import Request
+
+    server = get_server_module()
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {"x-qms-identity": "qa"}
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+
+    result = server.resolve_identity(ctx, "qa")
+    assert result == "qa", "Matching header and param should succeed"
+
+
+@pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
+def test_resolve_identity_mismatch_error_message_helpful():
+    """
+    Verify mismatch error message includes required helpful elements.
+
+    The error must include the real identity, claimed identity,
+    a user='<real>' instruction, and a QMS violation warning.
+
+    Verifies: REQ-MCP-015
+    """
+    from starlette.requests import Request
+
+    server = get_server_module()
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.headers = {"x-qms-identity": "qa"}
+
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.request = mock_request
+
+    ctx = MagicMock()
+    ctx.request_context = mock_request_ctx
+
+    with pytest.raises(ValueError) as exc_info:
+        server.resolve_identity(ctx, "tu_ui")
+
+    msg = str(exc_info.value)
+    assert "'qa'" in msg, "Error must include real identity"
+    assert "'tu_ui'" in msg, "Error must include claimed identity"
+    assert "user='qa'" in msg, "Error must include corrective instruction"
+    assert "violation" in msg.lower(), "Error must warn about QMS violation"
 
 
 @pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
@@ -1648,12 +1730,12 @@ def test_resolve_identity_tools_receive_resolved_identity():
     mock_mcp = MagicMock()
     mock_mcp.tool = capturing_decorator
 
-    def capturing_run(args, user="claude"):
+    def capturing_run(args, user):
         captured_calls.append({"args": args, "user": user})
         return {"success": True, "output": "OK", "return_code": 0}
 
     # resolve_identity that always returns "qa" (simulating HTTP enforcement)
-    def enforced_resolve(ctx, user="claude"):
+    def enforced_resolve(ctx, user):
         return "qa"
 
     tools.register_tools(mock_mcp, capturing_run, enforced_resolve)
@@ -1664,9 +1746,9 @@ def test_resolve_identity_tools_receive_resolved_identity():
     registered_funcs["qms_inbox"](ctx=ctx, user="claude")
     assert captured_calls[-1]["user"] == "qa", "Tool should use resolved identity"
 
-    # Call status (no user param) -- resolve should return "qa"
-    registered_funcs["qms_status"](ctx=ctx, doc_id="SOP-001")
-    assert captured_calls[-1]["user"] == "qa", "Tool without user param should use resolved identity"
+    # Call status with user="claude" -- resolve should override to "qa"
+    registered_funcs["qms_status"](ctx=ctx, doc_id="SOP-001", user="claude")
+    assert captured_calls[-1]["user"] == "qa", "Tool should use resolved identity"
 
 
 # ============================================================================
@@ -1750,7 +1832,7 @@ def test_identity_collision_enforced_locks_trusted():
     try:
         # Register qa via HTTP with header (enforced mode)
         http_ctx = make_mock_http_ctx("qa", "instance-aaa-111")
-        result = server.resolve_identity(http_ctx, "claude")
+        result = server.resolve_identity(http_ctx, "qa")
         assert result == "qa"
 
         # Attempt qa via HTTP without header (trusted mode) -- should be blocked
@@ -1773,12 +1855,12 @@ def test_identity_collision_enforced_locks_trusted():
 
 
 @pytest.mark.skipif(not mcp_package_available(), reason="MCP package not installed")
-def test_identity_collision_enforced_locks_fallback():
+def test_identity_collision_enforced_locks_stdio_mode():
     """
-    Verify enforced-mode identity blocks same identity from defensive fallback.
+    Verify enforced-mode identity blocks same identity from stdio mode.
 
     Register 'qa' via HTTP with header (enforced mode), then attempt 'qa'
-    with no request context (defensive fallback). The fallback request should
+    with no request context (stdio/non-HTTP mode). The request should
     be rejected with IdentityCollisionError.
 
     Verifies: REQ-MCP-016
@@ -1789,7 +1871,7 @@ def test_identity_collision_enforced_locks_fallback():
     try:
         # Register qa via HTTP (enforced mode)
         http_ctx = make_mock_http_ctx("qa", "instance-aaa-111")
-        result = server.resolve_identity(http_ctx, "claude")
+        result = server.resolve_identity(http_ctx, "qa")
         assert result == "qa"
 
         # Attempt qa with no request context (defensive fallback) -- should be blocked
@@ -1820,7 +1902,7 @@ def test_identity_collision_error_message_terminal():
     try:
         # Register qa via HTTP (enforced mode)
         http_ctx = make_mock_http_ctx("qa", "instance-bbb-222")
-        server.resolve_identity(http_ctx, "claude")
+        server.resolve_identity(http_ctx, "qa")
 
         # Attempt qa via HTTP without header (trusted mode) -- capture the error
         mock_request = MagicMock(spec=Request)
@@ -1868,7 +1950,7 @@ def test_identity_lock_ttl_expiry():
     try:
         # Register qa via HTTP (enforced mode)
         http_ctx = make_mock_http_ctx("qa", "instance-ccc-333")
-        server.resolve_identity(http_ctx, "claude")
+        server.resolve_identity(http_ctx, "qa")
 
         # Advance the lock's last_seen past TTL
         lock = server._identity_registry["qa"]
@@ -1909,7 +1991,7 @@ def test_identity_lock_heartbeat_refreshes():
     try:
         # Register qa via HTTP (enforced mode)
         http_ctx = make_mock_http_ctx("qa", "instance-ddd-444")
-        server.resolve_identity(http_ctx, "claude")
+        server.resolve_identity(http_ctx, "qa")
 
         # Advance to near TTL
         lock = server._identity_registry["qa"]
@@ -1917,7 +1999,7 @@ def test_identity_lock_heartbeat_refreshes():
 
         # Heartbeat -- same instance, new request
         http_ctx2 = make_mock_http_ctx("qa", "instance-ddd-444")
-        server.resolve_identity(http_ctx2, "claude")
+        server.resolve_identity(http_ctx2, "qa")
 
         # Lock should now have a fresh last_seen
         # Trusted mode should still be blocked
@@ -1955,7 +2037,7 @@ def test_identity_collision_different_identities_ok():
     try:
         # Register qa via HTTP (enforced mode)
         http_ctx = make_mock_http_ctx("qa", "instance-eee-555")
-        server.resolve_identity(http_ctx, "claude")
+        server.resolve_identity(http_ctx, "qa")
 
         # Attempt tu_ui via HTTP without header (trusted mode) -- should succeed
         mock_request = MagicMock(spec=Request)
@@ -2027,12 +2109,12 @@ def test_identity_collision_duplicate_container():
     try:
         # Register qa with instance A
         http_ctx_a = make_mock_http_ctx("qa", "instance-aaa-111")
-        server.resolve_identity(http_ctx_a, "claude")
+        server.resolve_identity(http_ctx_a, "qa")
 
         # Attempt qa with instance B -- should be rejected
         http_ctx_b = make_mock_http_ctx("qa", "instance-bbb-222")
         with pytest.raises(server.IdentityCollisionError) as exc_info:
-            server.resolve_identity(http_ctx_b, "claude")
+            server.resolve_identity(http_ctx_b, "qa")
 
         msg = str(exc_info.value)
         assert "IDENTITY LOCKED" in msg
@@ -2057,12 +2139,12 @@ def test_identity_collision_same_instance_heartbeat():
     try:
         instance_id = "instance-fff-666"
         http_ctx1 = make_mock_http_ctx("qa", instance_id)
-        result1 = server.resolve_identity(http_ctx1, "claude")
+        result1 = server.resolve_identity(http_ctx1, "qa")
         assert result1 == "qa"
 
         # Same instance, another request -- should succeed
         http_ctx2 = make_mock_http_ctx("qa", instance_id)
-        result2 = server.resolve_identity(http_ctx2, "claude")
+        result2 = server.resolve_identity(http_ctx2, "qa")
         assert result2 == "qa"
     finally:
         clear_identity_registry()
@@ -2084,7 +2166,7 @@ def test_identity_collision_duplicate_after_ttl():
     try:
         # Register qa with instance A
         http_ctx_a = make_mock_http_ctx("qa", "instance-ggg-777")
-        server.resolve_identity(http_ctx_a, "claude")
+        server.resolve_identity(http_ctx_a, "qa")
 
         # Expire the lock
         lock = server._identity_registry["qa"]
@@ -2092,7 +2174,7 @@ def test_identity_collision_duplicate_after_ttl():
 
         # Register qa with instance B -- should succeed (lock expired)
         http_ctx_b = make_mock_http_ctx("qa", "instance-hhh-888")
-        result = server.resolve_identity(http_ctx_b, "claude")
+        result = server.resolve_identity(http_ctx_b, "qa")
         assert result == "qa"
 
         # Verify new lock is for instance B
@@ -2119,10 +2201,10 @@ def test_identity_registry_cleanup():
     try:
         # Register two identities
         http_ctx_qa = make_mock_http_ctx("qa", "instance-iii-999")
-        server.resolve_identity(http_ctx_qa, "claude")
+        server.resolve_identity(http_ctx_qa, "qa")
 
         http_ctx_tu = make_mock_http_ctx("tu_ui", "instance-jjj-000")
-        server.resolve_identity(http_ctx_tu, "claude")
+        server.resolve_identity(http_ctx_tu, "tu_ui")
 
         assert len(server._identity_registry) == 2
 
@@ -2175,7 +2257,7 @@ def test_identity_lock_empty_instance_id():
         ctx = MagicMock()
         ctx.request_context = mock_request_ctx
 
-        result = server.resolve_identity(ctx, "claude")
+        result = server.resolve_identity(ctx, "qa")
         assert result == "qa"
 
         # Lock should exist with empty instance_id
@@ -2205,7 +2287,7 @@ def test_identity_collision_tool_returns_error():
     try:
         # Register qa via HTTP using real resolve_identity (enforced mode)
         http_ctx = make_mock_http_ctx("qa", "instance-kkk-111")
-        server.resolve_identity(http_ctx, "claude")
+        server.resolve_identity(http_ctx, "qa")
 
         # Set up tool with real resolve_identity
         registered_funcs = {}
@@ -2219,7 +2301,7 @@ def test_identity_collision_tool_returns_error():
         mock_mcp = MagicMock()
         mock_mcp.tool = capturing_decorator
 
-        def mock_run(args, user="claude"):
+        def mock_run(args, user):
             return {"success": True, "output": "OK", "return_code": 0}
 
         tools.register_tools(mock_mcp, mock_run, server.resolve_identity)

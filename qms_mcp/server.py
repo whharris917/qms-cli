@@ -140,13 +140,14 @@ def _check_identity_available(identity: str) -> IdentityLock | None:
     return lock
 
 
-def resolve_identity(ctx: Context, user_param: str = "claude") -> str:
+def resolve_identity(ctx: Context, user_param: str) -> str:
     """
     Resolve the effective QMS identity from request context.
 
     Header-based mode selection (REQ-MCP-015):
-    - X-QMS-Identity header present → Enforced mode (use header value)
+    - X-QMS-Identity header present → Enforced mode (header must match user_param)
     - X-QMS-Identity header absent → Trusted mode (use user parameter)
+    - Non-HTTP context (stdio, testing) → Trusted mode
 
     Identity collision prevention (REQ-MCP-016):
     - Enforced-mode callers register their identity in the in-memory registry.
@@ -155,74 +156,82 @@ def resolve_identity(ctx: Context, user_param: str = "claude") -> str:
 
     Args:
         ctx: FastMCP Context (injected by framework)
-        user_param: The user parameter from the tool call (used in trusted mode)
+        user_param: The user parameter from the tool call (required, no default)
 
     Returns:
         The resolved QMS user identity string.
 
     Raises:
+        ValueError: If user_param is empty/whitespace or mismatches enforced identity.
         IdentityCollisionError: If the identity is locked by another instance.
 
     Requirements: REQ-MCP-015, REQ-MCP-016
     """
-    _cleanup_expired_locks()
-
-    try:
-        request_ctx = ctx.request_context
-        if request_ctx is not None:
-            request = request_ctx.request
-            if request is not None and isinstance(request, Request):
-                # HTTP request -- determine mode from header presence
-                identity = request.headers.get("x-qms-identity")
-                if identity:
-                    # Enforced mode: header present
-                    if identity not in KNOWN_AGENTS:
-                        logger.warning(f"Unknown agent identity in header: {identity}")
-                    if user_param != "claude" and user_param != identity:
-                        logger.warning(
-                            f"Identity mismatch: header={identity}, param={user_param}. "
-                            f"Using enforced identity: {identity}"
-                        )
-
-                    # Register enforced identity (REQ-MCP-016)
-                    instance_id = request.headers.get("x-qms-instance", "")
-                    _register_identity(identity, instance_id)
-
-                    return identity
-                else:
-                    # Trusted mode: header absent (REQ-MCP-015)
-                    # Check for identity collision before allowing (REQ-MCP-016)
-                    lock = _check_identity_available(user_param)
-                    if lock is not None:
-                        raise IdentityCollisionError(
-                            f"IDENTITY LOCKED: '{user_param}' is active in enforced mode "
-                            f"(container instance {lock.instance_id[:8]}). "
-                            f"Trusted-mode request rejected. This identity is exclusively "
-                            f"held by a running container. "
-                            f"Do not attempt to troubleshoot -- the container is the "
-                            f"authoritative holder of this identity."
-                        )
-                    return user_param
-    except IdentityCollisionError:
-        raise  # Propagate collision errors (REQ-MCP-016)
-    except (AttributeError, LookupError):
-        pass  # No request context available -- defensive fallback
-
-    # Defensive fallback: no request context available
-    # (e.g., testing, future transport changes)
-    # Check for identity collision before allowing (REQ-MCP-016)
-    lock = _check_identity_available(user_param)
-    if lock is not None:
-        raise IdentityCollisionError(
-            f"IDENTITY LOCKED: '{user_param}' is active in enforced mode "
-            f"(container instance {lock.instance_id[:8]}). "
-            f"Request rejected. This identity is exclusively held by "
-            f"a running container. "
-            f"Do not attempt to troubleshoot -- the container is the "
-            f"authoritative holder of this identity."
+    if not user_param or not user_param.strip():
+        raise ValueError(
+            "IDENTITY REQUIRED: The 'user' parameter must be provided and non-empty. "
+            "Every MCP tool call requires an explicit user identity "
+            "(e.g., user='claude', user='qa'). "
+            "Omitting the user parameter or providing an empty value is not permitted."
         )
 
-    return user_param
+    _cleanup_expired_locks()
+
+    # Determine transport context using explicit attribute checks (REQ-MCP-015)
+    request_ctx = getattr(ctx, "request_context", None)
+    request = None
+    if request_ctx is not None:
+        request = getattr(request_ctx, "request", None)
+
+    if request is not None and isinstance(request, Request):
+        # HTTP request -- determine mode from header presence
+        identity = request.headers.get("x-qms-identity")
+        if identity:
+            # Enforced mode: header present (REQ-MCP-015)
+            if identity not in KNOWN_AGENTS:
+                logger.warning(f"Unknown agent identity in header: {identity}")
+            if user_param != identity:
+                raise ValueError(
+                    f"IDENTITY MISMATCH: Your authenticated identity is '{identity}' "
+                    f"but you called with user='{user_param}'. "
+                    f"Use user='{identity}' to match your authenticated identity. "
+                    f"Impersonating another user is a QMS violation."
+                )
+
+            # Register enforced identity (REQ-MCP-016)
+            instance_id = request.headers.get("x-qms-instance", "")
+            _register_identity(identity, instance_id)
+
+            return identity
+        else:
+            # Trusted mode: HTTP without header (REQ-MCP-015)
+            # Check for identity collision before allowing (REQ-MCP-016)
+            lock = _check_identity_available(user_param)
+            if lock is not None:
+                raise IdentityCollisionError(
+                    f"IDENTITY LOCKED: '{user_param}' is active in enforced mode "
+                    f"(container instance {lock.instance_id[:8]}). "
+                    f"Trusted-mode request rejected. This identity is exclusively "
+                    f"held by a running container. "
+                    f"Do not attempt to troubleshoot -- the container is the "
+                    f"authoritative holder of this identity."
+                )
+            return user_param
+    else:
+        # Non-HTTP context: stdio, testing, or non-Starlette transports (REQ-MCP-015)
+        # Explicit trusted-mode path -- no silent fallback
+        # Check for identity collision before allowing (REQ-MCP-016)
+        lock = _check_identity_available(user_param)
+        if lock is not None:
+            raise IdentityCollisionError(
+                f"IDENTITY LOCKED: '{user_param}' is active in enforced mode "
+                f"(container instance {lock.instance_id[:8]}). "
+                f"Request rejected. This identity is exclusively held by "
+                f"a running container. "
+                f"Do not attempt to troubleshoot -- the container is the "
+                f"authoritative holder of this identity."
+            )
+        return user_param
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -302,13 +311,13 @@ def get_qms_root() -> Path | None:
     return None
 
 
-def run_qms_command(args: list[str], user: str = "claude") -> dict:
+def run_qms_command(args: list[str], user: str) -> dict:
     """
     Execute a QMS CLI command and return the result.
 
     Args:
         args: Command arguments (e.g., ["inbox"], ["status", "CR-001"])
-        user: The QMS user identity (default: "claude")
+        user: The QMS user identity
 
     Returns:
         dict with keys:

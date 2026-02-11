@@ -26,14 +26,14 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
     # =========================================================================
 
     @mcp.tool()
-    def qms_inbox(ctx: Context, user: str = "claude") -> str:
+    def qms_inbox(ctx: Context, user: str) -> str:
         """
         Check the QMS inbox for pending tasks assigned to a user.
 
         Shows documents awaiting review, approval, or other action.
 
         Args:
-            user: QMS user identity (default: "claude")
+            user: QMS user identity
 
         Returns:
             List of pending inbox items or message if inbox is empty.
@@ -45,14 +45,14 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         return result["output"]
 
     @mcp.tool()
-    def qms_workspace(ctx: Context, user: str = "claude") -> str:
+    def qms_workspace(ctx: Context, user: str) -> str:
         """
         List documents currently checked out to a user's workspace.
 
         Shows all documents the user has locked for editing.
 
         Args:
-            user: QMS user identity (default: "claude")
+            user: QMS user identity
 
         Returns:
             List of checked-out documents or message if workspace is empty.
@@ -64,7 +64,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         return result["output"]
 
     @mcp.tool()
-    def qms_status(ctx: Context, doc_id: str) -> str:
+    def qms_status(ctx: Context, doc_id: str, user: str) -> str:
         """
         Get the current status of a QMS document.
 
@@ -72,13 +72,14 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier (e.g., "CR-001", "SOP-001")
+            user: QMS user identity
 
         Returns:
             Document status information or error if not found.
 
         Requirement: REQ-MCP-002
         """
-        resolved = resolve_identity(ctx)
+        resolved = resolve_identity(ctx, user)
         result = run_qms_command(["status", doc_id], user=resolved)
         return result["output"]
 
@@ -86,6 +87,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
     def qms_read(
         ctx: Context,
         doc_id: str,
+        user: str,
         version: str = "",
         draft: bool = False,
     ) -> str:
@@ -96,6 +98,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier (e.g., "CR-001", "SOP-001")
+            user: QMS user identity
             version: Specific version to read (e.g., "1.0", "2.1"). Empty for current.
             draft: If True, read the current draft version instead of effective.
 
@@ -104,7 +107,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Requirement: REQ-MCP-002
         """
-        resolved = resolve_identity(ctx)
+        resolved = resolve_identity(ctx, user)
         args = ["read", doc_id]
         if version:
             args.extend(["--version", version])
@@ -114,7 +117,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         return result["output"]
 
     @mcp.tool()
-    def qms_history(ctx: Context, doc_id: str) -> str:
+    def qms_history(ctx: Context, doc_id: str, user: str) -> str:
         """
         View the audit trail for a QMS document.
 
@@ -122,18 +125,19 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier (e.g., "CR-001", "SOP-001")
+            user: QMS user identity
 
         Returns:
             Audit trail events or error if not found.
 
         Requirement: REQ-MCP-002
         """
-        resolved = resolve_identity(ctx)
+        resolved = resolve_identity(ctx, user)
         result = run_qms_command(["history", doc_id], user=resolved)
         return result["output"]
 
     @mcp.tool()
-    def qms_comments(ctx: Context, doc_id: str, version: str = "") -> str:
+    def qms_comments(ctx: Context, doc_id: str, user: str, version: str = "") -> str:
         """
         View review comments for a QMS document.
 
@@ -141,6 +145,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier (e.g., "CR-001", "SOP-001")
+            user: QMS user identity
             version: Filter comments by version (optional).
 
         Returns:
@@ -148,7 +153,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Requirement: REQ-MCP-002
         """
-        resolved = resolve_identity(ctx)
+        resolved = resolve_identity(ctx, user)
         args = ["comments", doc_id]
         if version:
             args.extend(["--version", version])
@@ -164,9 +169,9 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         ctx: Context,
         doc_type: str,
         title: str,
+        user: str,
         parent: str = "",
         name: str = "",
-        user: str = "claude",
     ) -> str:
         """
         Create a new QMS document.
@@ -176,9 +181,9 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         Args:
             doc_type: Document type (e.g., "CR", "SOP", "INV", "VAR", "TP")
             title: Document title
+            user: QMS user identity
             parent: Parent document ID for child types (VAR, TP, ER)
             name: Name for TEMPLATE documents (required for TEMPLATE type)
-            user: QMS user identity (default: "claude")
 
         Returns:
             Confirmation with new document ID or error message.
@@ -195,7 +200,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         return result["output"]
 
     @mcp.tool()
-    def qms_checkout(ctx: Context, doc_id: str, user: str = "claude") -> str:
+    def qms_checkout(ctx: Context, doc_id: str, user: str) -> str:
         """
         Check out a QMS document for editing.
 
@@ -203,7 +208,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier (e.g., "CR-001")
-            user: QMS user identity (default: "claude")
+            user: QMS user identity
 
         Returns:
             Path to workspace copy or error message.
@@ -215,7 +220,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         return result["output"]
 
     @mcp.tool()
-    def qms_checkin(ctx: Context, doc_id: str, user: str = "claude") -> str:
+    def qms_checkin(ctx: Context, doc_id: str, user: str) -> str:
         """
         Check in a QMS document after editing.
 
@@ -223,7 +228,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier (e.g., "CR-001")
-            user: QMS user identity (default: "claude")
+            user: QMS user identity
 
         Returns:
             Confirmation with new version or error message.
@@ -235,7 +240,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         return result["output"]
 
     @mcp.tool()
-    def qms_cancel(ctx: Context, doc_id: str, confirm: bool = False, user: str = "claude") -> str:
+    def qms_cancel(ctx: Context, doc_id: str, user: str, confirm: bool = False) -> str:
         """
         Cancel a never-effective QMS document.
 
@@ -243,8 +248,8 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier (e.g., "CR-001")
+            user: QMS user identity
             confirm: Must be True to confirm cancellation (safety check)
-            user: QMS user identity (default: "claude")
 
         Returns:
             Confirmation of cancellation or error message.
@@ -267,8 +272,8 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         ctx: Context,
         doc_id: str,
         route_type: str,
+        user: str,
         retire: bool = False,
-        user: str = "claude",
     ) -> str:
         """
         Route a QMS document for review or approval.
@@ -278,8 +283,8 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         Args:
             doc_id: Document identifier (e.g., "CR-001")
             route_type: Routing action - "review" or "approval"
+            user: QMS user identity
             retire: If True, route for retirement approval
-            user: QMS user identity (default: "claude")
 
         Returns:
             Confirmation of routing or error message.
@@ -301,7 +306,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         ctx: Context,
         doc_id: str,
         assignees: list[str],
-        user: str = "claude",
+        user: str,
     ) -> str:
         """
         Add reviewers or approvers to a document.
@@ -311,7 +316,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         Args:
             doc_id: Document identifier (e.g., "CR-001")
             assignees: List of user IDs to assign (e.g., ["tu_ui", "tu_scene"])
-            user: QMS user identity - must be in quality group (default: "claude")
+            user: QMS user identity - must be in quality group
 
         Returns:
             Confirmation of assignment or error message.
@@ -328,8 +333,8 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         ctx: Context,
         doc_id: str,
         outcome: str,
+        user: str,
         comment: str = "",
-        user: str = "claude",
     ) -> str:
         """
         Submit a review for a QMS document.
@@ -339,8 +344,8 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         Args:
             doc_id: Document identifier (e.g., "CR-001")
             outcome: Review outcome - "recommend" or "request-updates"
+            user: QMS user identity
             comment: Review comments (optional but encouraged)
-            user: QMS user identity (default: "claude")
 
         Returns:
             Confirmation of review or error message.
@@ -358,7 +363,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         return result["output"]
 
     @mcp.tool()
-    def qms_approve(ctx: Context, doc_id: str, user: str = "claude") -> str:
+    def qms_approve(ctx: Context, doc_id: str, user: str) -> str:
         """
         Approve a QMS document.
 
@@ -366,7 +371,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier (e.g., "CR-001")
-            user: QMS user identity (default: "claude")
+            user: QMS user identity
 
         Returns:
             Confirmation of approval with new version or error message.
@@ -382,7 +387,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         ctx: Context,
         doc_id: str,
         comment: str,
-        user: str = "claude",
+        user: str,
     ) -> str:
         """
         Reject a QMS document.
@@ -392,7 +397,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         Args:
             doc_id: Document identifier (e.g., "CR-001")
             comment: Rejection rationale (required)
-            user: QMS user identity (default: "claude")
+            user: QMS user identity
 
         Returns:
             Confirmation of rejection or error message.
@@ -407,7 +412,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         return result["output"]
 
     @mcp.tool()
-    def qms_withdraw(ctx: Context, doc_id: str, user: str = "claude") -> str:
+    def qms_withdraw(ctx: Context, doc_id: str, user: str) -> str:
         """
         Withdraw a document from review or approval workflow.
 
@@ -415,7 +420,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier (e.g., "CR-001")
-            user: QMS user identity - must be document owner (default: "claude")
+            user: QMS user identity - must be document owner
 
         Returns:
             Confirmation of withdrawal or error message.
@@ -431,7 +436,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
     # =========================================================================
 
     @mcp.tool()
-    def qms_release(ctx: Context, doc_id: str, user: str = "claude") -> str:
+    def qms_release(ctx: Context, doc_id: str, user: str) -> str:
         """
         Release an executable document for execution.
 
@@ -439,7 +444,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier for an executable document (e.g., "CR-001")
-            user: QMS user identity - must be document owner (default: "claude")
+            user: QMS user identity - must be document owner
 
         Returns:
             Confirmation of release or error message.
@@ -455,7 +460,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         ctx: Context,
         doc_id: str,
         reason: str,
-        user: str = "claude",
+        user: str,
     ) -> str:
         """
         Revert an executable document to execution.
@@ -465,7 +470,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         Args:
             doc_id: Document identifier for an executable document (e.g., "CR-001")
             reason: Explanation for why revert is needed (required)
-            user: QMS user identity - must be document owner (default: "claude")
+            user: QMS user identity - must be document owner
 
         Returns:
             Confirmation of revert or error message.
@@ -480,7 +485,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         return result["output"]
 
     @mcp.tool()
-    def qms_close(ctx: Context, doc_id: str, user: str = "claude") -> str:
+    def qms_close(ctx: Context, doc_id: str, user: str) -> str:
         """
         Close an executable document.
 
@@ -488,7 +493,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier for an executable document (e.g., "CR-001")
-            user: QMS user identity - must be document owner (default: "claude")
+            user: QMS user identity - must be document owner
 
         Returns:
             Confirmation of closure or error message.
@@ -504,7 +509,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
     # =========================================================================
 
     @mcp.tool()
-    def qms_fix(ctx: Context, doc_id: str, user: str = "claude") -> str:
+    def qms_fix(ctx: Context, doc_id: str, user: str) -> str:
         """
         Perform an administrative fix on an EFFECTIVE document.
 
@@ -513,7 +518,7 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
 
         Args:
             doc_id: Document identifier (e.g., "SOP-001")
-            user: QMS user identity - must be administrator (default: "claude")
+            user: QMS user identity - must be administrator
 
         Returns:
             Confirmation of fix or error message.
