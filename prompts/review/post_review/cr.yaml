@@ -29,7 +29,8 @@ checklist:
   - category: Execution Compliance
     items:
       - text: "All execution items (EIs) have Pass/Fail outcomes"
-      - text: "Execution summaries describe what was done"
+      - text: "Each EI execution summary addresses ALL items in its task description"
+        evidence_prompt: "For each EI, list task description items and confirm each is addressed in the execution summary"
       - text: "All EIs have performer and date"
       - text: "VARs attached for any failed EIs"
 
