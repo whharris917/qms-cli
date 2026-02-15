@@ -147,6 +147,7 @@ DOCUMENT_TYPES = {
     "TP": {"path": "CR", "executable": True, "prefix": "TP", "parent_type": "CR"},
     "ER": {"path": "CR", "executable": True, "prefix": "ER", "parent_type": "TP"},
     "VAR": {"path": "CR", "executable": True, "prefix": "VAR"},
+    "ADD": {"path": "CR", "executable": True, "prefix": "ADD"},
     # Named document types (name-based rather than numbered)
     "TEMPLATE": {"path": "TEMPLATE", "executable": False, "prefix": "TEMPLATE"},
 }
