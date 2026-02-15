@@ -141,10 +141,10 @@ TASK OUTCOME:
 - Fail: Task could not be completed as planned - attach VAR with explanation
 -->
 
-| EI | Task Description | Execution Summary | Task Outcome | Performed By - Date |
+| EI | Task Description | Execution Summary | Task Outcome | Performed By — Date |
 |----|------------------|-------------------|--------------|---------------------|
-| EI-1 | {{DESCRIPTION}} | [SUMMARY] | [Pass/Fail] | [PERFORMER] - [DATE] |
-| EI-2 | {{DESCRIPTION}} | [SUMMARY] | [Pass/Fail] | [PERFORMER] - [DATE] |
+| EI-1 | {{DESCRIPTION}} | [SUMMARY] | [Pass/Fail] | [PERFORMER] — [DATE] |
+| EI-2 | {{DESCRIPTION}} | [SUMMARY] | [Pass/Fail] | [PERFORMER] — [DATE] |
 
 <!--
 NOTE: Do NOT delete this comment. It provides guidance during document execution.
@@ -156,9 +156,9 @@ Add rows as needed. When adding rows, fill columns 3-5 during execution.
 
 ### Execution Comments
 
-| Comment | Performed By - Date |
+| Comment | Performed By — Date |
 |---------|---------------------|
-| [COMMENT] | [PERFORMER] - [DATE] |
+| [COMMENT] | [PERFORMER] — [DATE] |
 
 <!--
 NOTE: Do NOT delete this comment. It provides guidance during document execution.
