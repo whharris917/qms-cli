@@ -96,6 +96,8 @@ def get_doc_type(doc_id: str) -> str:
     if "-TP-" in doc_id:
         # CR-034: TP now uses sequential format: CR-001-TP-001
         return "TP"
+    if re.search(r'-ADD-\d{3}$', doc_id):
+        return "ADD"
     if "-VAR-" in doc_id:
         return "VAR"
     if doc_id.startswith("CR-"):
@@ -119,9 +121,10 @@ def get_doc_path(doc_id: str, draft: bool = False) -> Path:
     base_path = QMS_ROOT / config["path"]
 
     # Handle nested document types that live in parent's folder
-    if doc_type == "VAR":
-        # CR-032 Gap 4: Derive path from parent type, not VAR config
+    if doc_type in ("VAR", "ADD"):
+        # CR-032 Gap 4: Derive path from parent type, not VAR/ADD config
         # CR-028-VAR-001 -> CR-028 (in CR/), INV-001-VAR-001 -> INV-001 (in INV/)
+        # CR-028-ADD-001 -> CR-028 (in CR/), CR-028-VAR-001-ADD-001 -> CR-028 (in CR/)
         match = re.match(r"((?:CR|INV)-\d+)", doc_id)
         if match:
             parent_id = match.group(1)
@@ -151,8 +154,8 @@ def get_archive_path(doc_id: str, version: str) -> Path:
 
     base_path = ARCHIVE_ROOT / config["path"]
 
-    # CR-032 Gap 4: VAR path derived from parent type
-    if doc_type == "VAR":
+    # CR-032 Gap 4: VAR/ADD path derived from parent type
+    if doc_type in ("VAR", "ADD"):
         match = re.match(r"((?:CR|INV)-\d+)", doc_id)
         if match:
             parent_id = match.group(1)

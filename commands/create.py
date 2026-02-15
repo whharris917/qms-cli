@@ -57,11 +57,13 @@ def cmd_create(args) -> int:
 
     # Handle parent document requirement for VAR, TP, and ER types (CR-032 Gap 3, CR-036-VAR-005)
     parent_id = getattr(args, 'parent', None)
-    if doc_type in ("VAR", "TP", "ER"):
+    if doc_type in ("VAR", "TP", "ER", "ADD"):
         if not parent_id:
             print(f"Error: {doc_type} documents require --parent flag")
             if doc_type == "ER":
                 print(f"Usage: qms create {doc_type} --parent CR-001-TP-001 --title \"...\"")
+            elif doc_type == "ADD":
+                print(f"Usage: qms create {doc_type} --parent CR-001 --title \"...\"")
             else:
                 print(f"Usage: qms create {doc_type} --parent CR-001 --title \"...\"")
             return 1
@@ -76,11 +78,23 @@ def cmd_create(args) -> int:
             if doc_type == "ER" and parent_type != "TP":
                 print("Error: ER documents must have a TP parent")
                 return 1
+            # ADD must have CR, INV, VAR, or ADD parent
+            if doc_type == "ADD" and parent_type not in ("CR", "INV", "VAR", "ADD"):
+                print("Error: ADD documents must have a CR, INV, VAR, or ADD parent")
+                return 1
             parent_path = get_doc_path(parent_id)
             parent_draft = get_doc_path(parent_id, draft=True)
             if not parent_path.exists() and not parent_draft.exists():
                 print(f"Error: Parent document {parent_id} does not exist")
                 return 1
+            # ADD requires parent to be CLOSED
+            if doc_type == "ADD":
+                from qms_meta import read_meta
+                parent_meta = read_meta(parent_id, parent_type)
+                if not parent_meta or parent_meta.get("status") != "CLOSED":
+                    print(f"Error: ADD documents can only be created against CLOSED parents.")
+                    print(f"Parent {parent_id} is currently {parent_meta.get('status', 'UNKNOWN') if parent_meta else 'UNKNOWN'}.")
+                    return 1
         except ValueError as e:
             print(f"Error: {e}")
             return 1
@@ -100,6 +114,10 @@ def cmd_create(args) -> int:
         # ER nested under TP: CR-001-TP-001-ER-001 (CR-036-VAR-005)
         next_num = get_next_nested_number(parent_id, "ER")
         doc_id = f"{parent_id}-ER-{next_num:03d}"
+    elif doc_type == "ADD" and parent_id:
+        # ADD nested under parent: CR-001-ADD-001, CR-001-VAR-001-ADD-001
+        next_num = get_next_nested_number(parent_id, "ADD")
+        doc_id = f"{parent_id}-ADD-{next_num:03d}"
     elif doc_type == "TEMPLATE":
         # CR-034: TEMPLATE requires --name argument
         name = getattr(args, 'name', None)

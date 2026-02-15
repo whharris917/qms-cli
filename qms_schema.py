@@ -10,13 +10,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 # Valid document types
-DOC_TYPES = {"SOP", "CR", "INV", "CAPA", "TP", "ER", "VAR", "RS", "DS", "CS", "RTM", "OQ", "QMS-RS", "QMS-RTM", "TEMPLATE"}
+DOC_TYPES = {"SOP", "CR", "INV", "CAPA", "TP", "ER", "VAR", "ADD", "RS", "DS", "CS", "RTM", "OQ", "QMS-RS", "QMS-RTM", "TEMPLATE"}
 
 # Document types that use folder-per-doc structure
-FOLDER_DOC_TYPES = {"CR", "INV", "CAPA", "TP", "ER", "VAR"}
+FOLDER_DOC_TYPES = {"CR", "INV", "CAPA", "TP", "ER", "VAR", "ADD"}
 
 # Executable document types
-EXECUTABLE_TYPES = {"CR", "INV", "CAPA", "TP", "ER", "VAR"}
+EXECUTABLE_TYPES = {"CR", "INV", "CAPA", "TP", "ER", "VAR", "ADD"}
 
 # Valid statuses for non-executable documents
 NON_EXECUTABLE_STATUSES = {
@@ -45,6 +45,7 @@ DOC_ID_PATTERNS = {
     "TP": re.compile(r"^TP-\d{3}$"),
     "ER": re.compile(r"^ER-\d{3}$"),
     "VAR": re.compile(r"^(?:CR|INV)-\d{3}-VAR-\d{3}$"),
+    "ADD": re.compile(r"^(?:CR|INV)-\d{3}(?:-(?:VAR|ADD)-\d{3})*-ADD-\d{3}$"),
     # Singleton types (SDLC documents)
     "RS": re.compile(r"^SDLC-FLOW-RS$"),
     "DS": re.compile(r"^SDLC-FLOW-DS$"),

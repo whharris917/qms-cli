@@ -60,7 +60,7 @@ Check document status: qms --user {user} status {doc_id}
         print(f"""
 Error: {doc_id} is not an executable document.
 
-Only executable documents (CR, INV, CAPA, TP, ER) can be closed.
+Only executable documents (CR, INV, CAPA, TP, ER, VAR, ADD) can be closed.
 Non-executable documents (SOP, RS, DS, etc.) become EFFECTIVE after approval.
 """)
         return 1
