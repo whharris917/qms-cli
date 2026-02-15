@@ -652,3 +652,239 @@ def test_approval_archives_effective(temp_project):
     meta = read_meta(temp_project, "SOP-001", "SOP")
     assert meta["version"] == "2.0"
     assert meta["status"] == "EFFECTIVE"
+
+
+# ============================================================================
+# Helper: Drive CR to CLOSED state
+# ============================================================================
+
+def close_cr(temp_project, cr_id):
+    """Drive a CR through its full executable lifecycle to CLOSED state.
+
+    The CR must already exist and be checked in (DRAFT, not checked out).
+    """
+    # Pre-review
+    run_qms(temp_project, "claude", "route", cr_id, "--review")
+    run_qms(temp_project, "qa", "review", cr_id, "--recommend", "--comment", "OK")
+    # Pre-approval
+    run_qms(temp_project, "claude", "route", cr_id, "--approval")
+    run_qms(temp_project, "qa", "approve", cr_id)
+    # Release to execution
+    run_qms(temp_project, "claude", "release", cr_id)
+    # Post-review
+    run_qms(temp_project, "claude", "route", cr_id, "--review")
+    run_qms(temp_project, "qa", "review", cr_id, "--recommend", "--comment", "OK")
+    # Post-approval
+    run_qms(temp_project, "claude", "route", cr_id, "--approval")
+    run_qms(temp_project, "qa", "approve", cr_id)
+    # Close
+    result = run_qms(temp_project, "claude", "close", cr_id)
+    assert result.returncode == 0, f"Failed to close {cr_id}: {result.stderr}"
+
+
+# ============================================================================
+# Test: ADD Document Type
+# ============================================================================
+
+def test_create_add_under_cr(temp_project):
+    """
+    ADD is created as a child of a CLOSED CR, stored in CR's folder.
+
+    Verifies: REQ-DOC-001, REQ-DOC-002, REQ-DOC-015
+    """
+    # Create and close parent CR
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Parent CR for ADD")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    close_cr(temp_project, "CR-001")
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "CLOSED"
+
+    # [REQ-DOC-001] [REQ-DOC-002] [REQ-DOC-015] Create ADD under CLOSED CR
+    result = run_qms(temp_project, "claude", "create", "ADD", "--parent", "CR-001",
+                     "--title", "Addendum to CR-001")
+    assert result.returncode == 0, f"Create ADD failed: {result.stderr}"
+
+    # Verify ADD is in CR's folder with correct ID
+    cr_folder = temp_project / "QMS" / "CR" / "CR-001"
+    assert (cr_folder / "CR-001-ADD-001-draft.md").exists(), "ADD should be in CR folder"
+
+    # Verify metadata
+    add_meta = read_meta(temp_project, "CR-001-ADD-001", "ADD")
+    assert add_meta is not None, "ADD metadata should exist"
+    assert add_meta["doc_type"] == "ADD"
+    assert add_meta["executable"] == True
+    assert add_meta["status"] == "DRAFT"
+
+
+def test_create_add_under_inv(temp_project):
+    """
+    ADD is created as a child of a CLOSED INV, stored in INV's folder.
+
+    Verifies: REQ-DOC-001, REQ-DOC-002, REQ-DOC-015
+    """
+    # Create INV directories
+    (temp_project / "QMS" / ".meta" / "INV").mkdir(parents=True, exist_ok=True)
+    (temp_project / "QMS" / ".audit" / "INV").mkdir(parents=True, exist_ok=True)
+
+    # Create and close parent INV
+    run_qms(temp_project, "claude", "create", "INV", "--title", "Parent INV for ADD")
+    run_qms(temp_project, "claude", "checkin", "INV-001")
+
+    # Drive INV through full lifecycle (same as CR)
+    run_qms(temp_project, "claude", "route", "INV-001", "--review")
+    run_qms(temp_project, "qa", "review", "INV-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "INV-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "INV-001")
+    run_qms(temp_project, "claude", "release", "INV-001")
+    run_qms(temp_project, "claude", "route", "INV-001", "--review")
+    run_qms(temp_project, "qa", "review", "INV-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "INV-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "INV-001")
+    run_qms(temp_project, "claude", "close", "INV-001")
+
+    meta = read_meta(temp_project, "INV-001", "INV")
+    assert meta["status"] == "CLOSED"
+
+    # [REQ-DOC-002] Create ADD under CLOSED INV
+    result = run_qms(temp_project, "claude", "create", "ADD", "--parent", "INV-001",
+                     "--title", "Addendum to INV-001")
+    assert result.returncode == 0, f"Create ADD under INV failed: {result.stderr}"
+
+    # Verify ADD is in INV's folder
+    inv_folder = temp_project / "QMS" / "INV" / "INV-001"
+    assert (inv_folder / "INV-001-ADD-001-draft.md").exists(), "ADD should be in INV folder"
+
+
+def test_create_add_under_var(temp_project):
+    """
+    ADD is created as a child of a CLOSED VAR, stored in parent CR's folder.
+
+    Verifies: REQ-DOC-002, REQ-DOC-005
+    """
+    # Create parent CR and get to IN_EXECUTION
+    run_qms(temp_project, "claude", "create", "CR", "--title", "CR for VAR-ADD")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    run_qms(temp_project, "claude", "route", "CR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "CR-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "CR-001")
+    run_qms(temp_project, "claude", "release", "CR-001")
+
+    # Create VAR under CR
+    result = run_qms(temp_project, "claude", "create", "VAR", "--parent", "CR-001",
+                     "--title", "VAR for ADD test")
+    assert result.returncode == 0, f"Create VAR failed: {result.stderr}"
+
+    # Close the VAR
+    run_qms(temp_project, "claude", "checkin", "CR-001-VAR-001")
+    run_qms(temp_project, "claude", "route", "CR-001-VAR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001-VAR-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "CR-001-VAR-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "CR-001-VAR-001")
+    run_qms(temp_project, "claude", "release", "CR-001-VAR-001")
+    run_qms(temp_project, "claude", "route", "CR-001-VAR-001", "--review")
+    run_qms(temp_project, "qa", "review", "CR-001-VAR-001", "--recommend", "--comment", "OK")
+    run_qms(temp_project, "claude", "route", "CR-001-VAR-001", "--approval")
+    run_qms(temp_project, "qa", "approve", "CR-001-VAR-001")
+    run_qms(temp_project, "claude", "close", "CR-001-VAR-001")
+
+    var_meta = read_meta(temp_project, "CR-001-VAR-001", "VAR")
+    assert var_meta["status"] == "CLOSED"
+
+    # [REQ-DOC-002] [REQ-DOC-005] Create ADD under CLOSED VAR
+    result = run_qms(temp_project, "claude", "create", "ADD", "--parent", "CR-001-VAR-001",
+                     "--title", "Addendum to VAR")
+    assert result.returncode == 0, f"Create ADD under VAR failed: {result.stderr}"
+
+    # Verify ADD is in CR's folder (VAR and ADD both live in parent CR folder)
+    cr_folder = temp_project / "QMS" / "CR" / "CR-001"
+    assert (cr_folder / "CR-001-VAR-001-ADD-001-draft.md").exists(), \
+        "ADD under VAR should be in parent CR folder"
+
+    # Verify metadata
+    add_meta = read_meta(temp_project, "CR-001-VAR-001-ADD-001", "ADD")
+    assert add_meta is not None
+    assert add_meta["doc_type"] == "ADD"
+
+
+def test_create_add_requires_closed_parent(temp_project):
+    """
+    ADD creation is rejected when parent is not CLOSED.
+
+    Verifies: REQ-DOC-015
+    """
+    # Create CR but don't close it (leave at DRAFT)
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Non-closed CR")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "DRAFT"
+
+    # [REQ-DOC-015] Attempt ADD creation - should fail
+    result = run_qms(temp_project, "claude", "create", "ADD", "--parent", "CR-001",
+                     "--title", "Should Fail")
+    assert result.returncode != 0, "ADD creation should be rejected for non-CLOSED parent"
+    assert "CLOSED" in result.stdout or "CLOSED" in result.stderr, \
+        "Error should mention CLOSED requirement"
+
+
+def test_add_sequential_id_generation(temp_project):
+    """
+    Multiple ADDs under the same parent get sequential IDs.
+
+    Verifies: REQ-DOC-005
+    """
+    # Create and close parent CR
+    run_qms(temp_project, "claude", "create", "CR", "--title", "CR for sequential ADDs")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    close_cr(temp_project, "CR-001")
+
+    # [REQ-DOC-005] Create multiple ADDs
+    result = run_qms(temp_project, "claude", "create", "ADD", "--parent", "CR-001",
+                     "--title", "First ADD")
+    assert result.returncode == 0
+    result = run_qms(temp_project, "claude", "create", "ADD", "--parent", "CR-001",
+                     "--title", "Second ADD")
+    assert result.returncode == 0
+    result = run_qms(temp_project, "claude", "create", "ADD", "--parent", "CR-001",
+                     "--title", "Third ADD")
+    assert result.returncode == 0
+
+    cr_folder = temp_project / "QMS" / "CR" / "CR-001"
+    assert (cr_folder / "CR-001-ADD-001-draft.md").exists()
+    assert (cr_folder / "CR-001-ADD-002-draft.md").exists()
+    assert (cr_folder / "CR-001-ADD-003-draft.md").exists()
+
+
+def test_create_add_requires_parent(temp_project):
+    """
+    ADD creation requires --parent flag.
+
+    Verifies: REQ-DOC-002
+    """
+    # [REQ-DOC-002] Attempt ADD creation without --parent
+    result = run_qms(temp_project, "claude", "create", "ADD", "--title", "No Parent")
+    assert result.returncode != 0, "ADD creation should require --parent flag"
+    assert "parent" in result.stdout.lower() or "parent" in result.stderr.lower(), \
+        "Error should mention parent requirement"
+
+
+def test_create_add_rejects_invalid_parent_type(temp_project):
+    """
+    ADD creation is rejected when parent is TP (invalid parent type).
+
+    Verifies: REQ-DOC-002
+    """
+    # Create CR and TP
+    run_qms(temp_project, "claude", "create", "CR", "--title", "CR for TP parent test")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+
+    run_qms(temp_project, "claude", "create", "TP", "--parent", "CR-001",
+            "--title", "Test Protocol")
+    run_qms(temp_project, "claude", "checkin", "CR-001-TP-001")
+
+    # [REQ-DOC-002] Attempt ADD creation under TP - should fail
+    result = run_qms(temp_project, "claude", "create", "ADD", "--parent", "CR-001-TP-001",
+                     "--title", "Should Fail")
+    assert result.returncode != 0, "ADD creation should be rejected for TP parent"
