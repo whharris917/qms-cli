@@ -1,6 +1,7 @@
 ---
-title: 'Change Record Template'
-revision_summary: Initial release
+title: Change Record Template
+revision_summary: 'CR-084: Add integration verification to CODE CR PATTERNS, Section
+  8, and new Phase 5'
 ---
 
 <!--
@@ -20,7 +21,7 @@ When creating a CR from this template, copy from the EXAMPLE FRONTMATTER onward.
 
 ---
 title: '{{TITLE}}'
-revision_summary: Initial release
+revision_summary: 'Initial draft'
 ---
 
 <!--
@@ -77,13 +78,19 @@ CODE CR PATTERNS:
 When a CR modifies controlled code (any system with SDLC governance):
 - Include Section 7.4 (Development Controls) and 7.5 (Qualified State Continuity)
 - Use the standardized implementation phases in Section 9
-- RS and RTM must be EFFECTIVE before merging to main
-- RTM must reference the CI-verified commit hash from the dev branch
-- Qualification happens on the dev branch; main stays qualified throughout
+- RS and RTM must be EFFECTIVE before merging to main (SOP-006 Section 7.4)
+- The qualified commit is the execution branch commit verified by CI (SOP-005 Section 7.1.2)
+- RTM must reference this execution branch commit hash -- not the merge commit
+- Merge type: regular merge commit (--no-ff). Squash merges are prohibited (SOP-005 Section 7.1.3)
+- Qualification happens on the execution branch; main stays qualified throughout
+- Integration verification is required before merge (SOP-002 Section 6.8): exercise
+  changed functionality through user-facing levers to demonstrate it works
 
 The pattern ensures:
 - main branch is always in a qualified state
 - No code merges without approved requirements and passing tests
+- Changed functionality is verified in a running system, not only via automated tests
+- The qualified commit hash in the RTM is reachable on main via merge commit
 - Full traceability from requirements to verified implementation
 
 Delete this comment block after reading.
@@ -207,11 +214,31 @@ Delete this section for document-only CRs.
 
 ## 8. Testing Summary
 
-{{TESTING - Describe how the implementation will be verified}}
+<!--
+NOTE: Do NOT delete this comment. It provides guidance during document authoring.
+
+For code CRs, address both categories per SOP-002 Section 6.8:
+1. Automated verification: unit tests, qualification tests, CI
+2. Integration verification: what will be exercised through user-facing levers
+   in a running system to demonstrate the change is effective
+
+For document-only CRs, a description of procedural verification is sufficient.
+Delete the subsections below and use a simple list.
+-->
+
+### Automated Verification
+
+{{AUTOMATED_TESTING - Unit tests, CI checks, qualification tests}}
 
 - {{Test case 1}}
 - {{Test case 2}}
-- {{Test case 3}}
+
+### Integration Verification
+
+{{INTEGRATION_TESTING - What will be launched, what functionality will be exercised through user-facing levers, what behavior demonstrates the change is effective}}
+
+- {{Verification step 1}}
+- {{Verification step 2}}
 
 ---
 
@@ -263,7 +290,25 @@ Include for code CRs. Delete for document-only CRs.
 4. Verify GitHub Actions CI passes
 5. Document qualified commit hash
 
-### 9.5 Phase 5: RTM Update
+### 9.5 Phase 5: Integration Verification
+
+<!--
+Include for code CRs. Delete for document-only CRs.
+
+This phase verifies the implementation in a running system before proceeding
+to RTM update and merge. It is distinct from Phase 4 (automated qualification)
+and from Phase 7 step 7 (post-merge smoke test):
+- Phase 4: Do the automated tests pass? (CI gate)
+- Phase 5: Does it actually work when you use it? (integration verification)
+- Phase 7 step 7: Did the merge itself introduce any problems? (post-merge smoke test)
+-->
+
+1. Launch the application/system with the execution branch code
+2. Exercise changed functionality through user-facing levers
+3. Confirm the change is effective and no obvious regressions in related functionality
+4. Document what was exercised and what was observed
+
+### 9.6 Phase 6: RTM Update and Approval
 
 <!--
 Include for code CRs that add/modify requirements. Delete if not applicable.
@@ -272,19 +317,25 @@ Include for code CRs that add/modify requirements. Delete if not applicable.
 1. Checkout SDLC-{{NS}}-RTM in production QMS
 2. Add verification evidence referencing CI-verified commit
 3. Checkin RTM, route for review and approval
+4. **Verify RTM reaches EFFECTIVE status before proceeding to Phase 7**
 
-### 9.6 Phase 6: Merge and Submodule Update
+### 9.7 Phase 7: Merge and Submodule Update
 
 <!--
 Include for code CRs. Delete for document-only CRs.
 -->
 
-1. Once RS and RTM are EFFECTIVE, create PR to merge dev branch to main
-2. Merge PR
-3. Update submodule pointer in parent repo
-4. Verify functionality in production context
+**Prerequisite:** RS and RTM must both be EFFECTIVE before proceeding (per SOP-006 Section 7.4).
 
-### 9.7 Phase 7: Documentation (if applicable)
+1. Verify RS is EFFECTIVE (document status check)
+2. Verify RTM is EFFECTIVE (document status check)
+3. Create PR to merge dev branch to main
+4. Merge PR using merge commit -- not squash (per SOP-005 Section 7.1.3)
+5. Verify qualified commit hash from execution branch is reachable on main
+6. Update submodule pointer in parent repo
+7. Verify functionality in production context
+
+### 9.8 Phase 8: Documentation (if applicable)
 
 1. Update CLAUDE.md or other documentation as needed
 

@@ -1,6 +1,7 @@
 ---
-title: 'Variance Report Template'
-revision_summary: Initial release
+title: Variance Report Template
+revision_summary: 'CR-084: Add integration verification guidance for code-related
+  resolution'
 ---
 
 <!--
@@ -20,7 +21,7 @@ When creating a VAR from this template, copy from the EXAMPLE FRONTMATTER onward
 
 ---
 title: '{{TITLE}}'
-revision_summary: Initial release
+revision_summary: 'Initial draft'
 ---
 
 <!--
@@ -159,6 +160,12 @@ FOR CR/INV VARIANCES:
 
 FOR SIMPLE RESOLUTIONS:
   Use narrative + evidence format
+
+WHEN RESOLUTION INVOLVES CODE CHANGES:
+  Include integration verification as a resolution step. Exercise the fix
+  through user-facing levers in a running system and document observed
+  behavior. Automated tests alone are not sufficient to demonstrate the
+  fix works as intended (per SOP-002 Section 6.8, SOP-004 Section 9A.3).
 
 If the resolution involves modifying the original scope/plan, reviewers must
 verify that the revised approach meets the intent of the parent's objectives.
