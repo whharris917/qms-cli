@@ -1,6 +1,7 @@
 ---
 title: Change Record Template
-revision_summary: 'CR-085: Add pre-execution commit reminder to execution instructions'
+revision_summary: 'CR-086: Update execution instructions with pre/post-execution commit
+  guidance and fix repository language'
 ---
 
 <!--
@@ -347,8 +348,15 @@ EXECUTION PHASE INSTRUCTIONS
 ============================
 NOTE: Do NOT delete this comment block. It provides guidance for execution.
 
-PRE-EXECUTION: Before releasing for execution, commit and push the QMS
-repository to preserve the pre-execution baseline (per SOP-004 Section 5).
+PRE-EXECUTION: After releasing for execution, the first execution item is to
+commit and push the project repository (including all submodules) to capture
+the pre-execution baseline (per SOP-004 Section 5). Record the commit hash
+in EI-1's execution summary.
+
+POST-EXECUTION: The final execution item is to commit and push the project
+repository (including all submodules) to capture the post-execution state
+(per SOP-004 Section 5). Record the commit hash in the final EI's execution
+summary.
 
 - Sections 1-9 are PRE-APPROVED content - do NOT modify during execution
 - Only THIS TABLE and the comment sections below should be edited during execution phase
