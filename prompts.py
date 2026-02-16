@@ -6,11 +6,12 @@ Allows customization per document type and workflow phase.
 
 Created as part of CR-026: QMS CLI Extensibility Refactoring
 Updated in CR-027: Extract prompts to external YAML files
+Updated in CR-087: Remove in-memory fallback; YAML is sole config source
 """
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple, Callable
+from typing import Optional, List, Dict, Tuple
 
 import yaml
 
@@ -177,167 +178,6 @@ def get_prompt_file_path(
 
 
 # =============================================================================
-# Default Checklist Items (Legacy - used as fallback if no YAML files exist)
-# =============================================================================
-
-DEFAULT_FRONTMATTER_CHECKS = [
-    ChecklistItem(
-        category="Frontmatter",
-        item="`title:` field present and non-empty",
-        evidence_prompt="quote actual value"
-    ),
-    ChecklistItem(
-        category="Frontmatter",
-        item="`revision_summary:` present (required for v1.0+)",
-        evidence_prompt="quote actual value or N/A"
-    ),
-    ChecklistItem(
-        category="Frontmatter",
-        item="`revision_summary:` begins with CR ID (e.g., \"CR-XXX:\")",
-        evidence_prompt="quote CR ID or N/A"
-    ),
-]
-
-DEFAULT_STRUCTURE_CHECKS = [
-    ChecklistItem(
-        category="Document Structure",
-        item="Document follows type-specific template",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Document Structure",
-        item="All required sections present",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Document Structure",
-        item="Section numbering sequential and correct",
-        evidence_prompt=""
-    ),
-]
-
-DEFAULT_CONTENT_CHECKS = [
-    ChecklistItem(
-        category="Content Integrity",
-        item="No placeholder text (TBD, TODO, XXX, FIXME)",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Content Integrity",
-        item="No obvious factual errors or contradictions",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Content Integrity",
-        item="References to other documents are valid",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Content Integrity",
-        item="No typos or grammatical errors",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Content Integrity",
-        item="Formatting consistent throughout",
-        evidence_prompt=""
-    ),
-]
-
-# CR-specific checks for executable documents
-CR_EXECUTION_CHECKS = [
-    ChecklistItem(
-        category="Execution Compliance",
-        item="All execution items (EIs) have Pass/Fail outcomes",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Execution Compliance",
-        item="Execution summaries describe what was done",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Execution Compliance",
-        item="All EIs have performer and date",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Execution Compliance",
-        item="VARs attached for any failed EIs",
-        evidence_prompt=""
-    ),
-]
-
-# SOP-specific checks
-SOP_CHECKS = [
-    ChecklistItem(
-        category="Procedure Content",
-        item="Responsibilities section defines all roles",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Procedure Content",
-        item="Procedure steps are numbered and unambiguous",
-        evidence_prompt=""
-    ),
-    ChecklistItem(
-        category="Procedure Content",
-        item="References section lists all dependencies",
-        evidence_prompt=""
-    ),
-]
-
-DEFAULT_CRITICAL_REMINDERS = [
-    "**Compliance is BINARY**: Document is either compliant or non-compliant",
-    "**ONE FAILED ITEM = REJECT**: No exceptions, no \"minor issues\"",
-    "**VERIFY WITH EVIDENCE**: Quote actual values, do not assume",
-    "**REJECTION IS CORRECT**: A rejected document prevents nonconformance",
-]
-
-APPROVAL_CRITICAL_REMINDERS = [
-    "An incorrectly approved document creates **nonconformance**",
-    "A rejected document creates a **correction cycle** (much lower cost)",
-    "**Rejection is always the safer choice**",
-    "You are the final gatekeeper - if you miss something, it becomes effective",
-]
-
-
-# =============================================================================
-# Default Configurations
-# =============================================================================
-
-DEFAULT_REVIEW_CONFIG = PromptConfig(
-    checklist_items=DEFAULT_FRONTMATTER_CHECKS + DEFAULT_STRUCTURE_CHECKS + DEFAULT_CONTENT_CHECKS,
-    critical_reminders=DEFAULT_CRITICAL_REMINDERS,
-)
-
-DEFAULT_APPROVAL_CONFIG = PromptConfig(
-    checklist_items=[
-        ChecklistItem("Pre-Approval", "Frontmatter complete (title, revision_summary with CR ID if v1.0+)", ""),
-        ChecklistItem("Pre-Approval", "All review findings from previous cycle addressed", ""),
-        ChecklistItem("Pre-Approval", "No new deficiencies introduced since review", ""),
-        ChecklistItem("Pre-Approval", "Document is 100% compliant with all requirements", ""),
-    ],
-    critical_reminders=APPROVAL_CRITICAL_REMINDERS,
-)
-
-# CR post-review configuration (includes execution checks)
-CR_POST_REVIEW_CONFIG = PromptConfig(
-    checklist_items=DEFAULT_FRONTMATTER_CHECKS + DEFAULT_STRUCTURE_CHECKS + DEFAULT_CONTENT_CHECKS + CR_EXECUTION_CHECKS,
-    critical_reminders=DEFAULT_CRITICAL_REMINDERS + [
-        "**EXECUTION VERIFICATION IS CRITICAL**: All EIs must have outcomes",
-        "Missing EI data = incomplete execution = REJECT",
-    ],
-)
-
-# SOP review configuration
-SOP_REVIEW_CONFIG = PromptConfig(
-    checklist_items=DEFAULT_FRONTMATTER_CHECKS + DEFAULT_STRUCTURE_CHECKS + DEFAULT_CONTENT_CHECKS + SOP_CHECKS,
-    critical_reminders=DEFAULT_CRITICAL_REMINDERS,
-)
-
-
-# =============================================================================
 # Prompt Registry
 # =============================================================================
 
@@ -345,50 +185,13 @@ class PromptRegistry:
     """
     Registry for task prompt configurations.
 
-    Allows registration of prompts per (task_type, workflow_type, doc_type).
-    Falls back to defaults when specific configurations aren't registered.
+    Loads prompt configurations from YAML files in the prompts/ directory.
+    YAML is the sole configuration source (CR-087).
     """
 
     def __init__(self):
-        """Initialize with default configurations."""
-        # Key: (task_type, workflow_type, doc_type) or with None for wildcards
-        self._configs: Dict[Tuple[Optional[str], Optional[str], Optional[str]], PromptConfig] = {}
-
-        # Register defaults
-        self._register_defaults()
-
-    def _register_defaults(self) -> None:
-        """Register default prompt configurations."""
-        # Default review config (fallback for all review types)
-        self.register("REVIEW", None, None, DEFAULT_REVIEW_CONFIG)
-
-        # Default approval config (fallback for all approval types)
-        self.register("APPROVAL", None, None, DEFAULT_APPROVAL_CONFIG)
-
-        # CR post-review (includes execution checks)
-        self.register("REVIEW", "POST_REVIEW", "CR", CR_POST_REVIEW_CONFIG)
-
-        # SOP review (includes procedure checks)
-        self.register("REVIEW", "REVIEW", "SOP", SOP_REVIEW_CONFIG)
-
-    def register(
-        self,
-        task_type: Optional[str],
-        workflow_type: Optional[str],
-        doc_type: Optional[str],
-        config: PromptConfig
-    ) -> None:
-        """
-        Register a prompt configuration.
-
-        Args:
-            task_type: "REVIEW" or "APPROVAL" (None for any)
-            workflow_type: e.g., "PRE_REVIEW", "POST_APPROVAL" (None for any)
-            doc_type: e.g., "CR", "SOP", "INV" (None for any)
-            config: The PromptConfig to use
-        """
-        key = (task_type, workflow_type, doc_type)
-        self._configs[key] = config
+        """Initialize the registry."""
+        pass
 
     def get_config(
         self,
@@ -399,46 +202,29 @@ class PromptRegistry:
         """
         Get the most specific configuration for the given context.
 
-        First tries to load from YAML files (CR-027), then falls back to
-        in-memory registry (legacy).
-
-        File-based fallback order:
+        Loads from YAML files using hierarchical fallback:
         1. {task_type}/{workflow_type}/{doc_type}.yaml (exact match)
         2. {task_type}/{workflow_type}/default.yaml (workflow default)
         3. {task_type}/default.yaml (task type default)
 
-        In-memory fallback order (if no files found):
-        1. (task_type, workflow_type, doc_type) - exact match
-        2. (task_type, workflow_type, None) - any doc type
-        3. (task_type, None, doc_type) - any workflow
-        4. (task_type, None, None) - task type default
-        5. (None, None, None) - global default
+        Raises:
+            FileNotFoundError: If no YAML configuration file is found
 
         Returns:
             The most specific PromptConfig found
         """
-        # First try file-based lookup (CR-027)
         file_path = get_prompt_file_path(task_type, workflow_type, doc_type)
         if file_path:
             config = load_config_from_yaml(file_path)
             if config:
                 return config
 
-        # Fall back to in-memory registry (legacy)
-        lookup_order = [
-            (task_type, workflow_type, doc_type),
-            (task_type, workflow_type, None),
-            (task_type, None, doc_type),
-            (task_type, None, None),
-            (None, None, None),
-        ]
-
-        for key in lookup_order:
-            if key in self._configs:
-                return self._configs[key]
-
-        # Absolute fallback - return default review config
-        return DEFAULT_REVIEW_CONFIG
+        raise FileNotFoundError(
+            f"No prompt configuration found for task_type={task_type}, "
+            f"workflow_type={workflow_type}, doc_type={doc_type}. "
+            f"Expected YAML files in {PROMPTS_DIR}/. "
+            f"Check that the prompts/ directory is complete."
+        )
 
     def generate_review_content(
         self,
