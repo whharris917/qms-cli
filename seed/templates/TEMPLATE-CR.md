@@ -1,7 +1,6 @@
 ---
 title: Change Record Template
-revision_summary: 'CR-084: Add integration verification to CODE CR PATTERNS, Section
-  8, and new Phase 5'
+revision_summary: 'CR-085: Add pre-execution commit reminder to execution instructions'
 ---
 
 <!--
@@ -347,6 +346,9 @@ Include for code CRs. Delete for document-only CRs.
 EXECUTION PHASE INSTRUCTIONS
 ============================
 NOTE: Do NOT delete this comment block. It provides guidance for execution.
+
+PRE-EXECUTION: Before releasing for execution, commit and push the QMS
+repository to preserve the pre-execution baseline (per SOP-004 Section 5).
 
 - Sections 1-9 are PRE-APPROVED content - do NOT modify during execution
 - Only THIS TABLE and the comment sections below should be edited during execution phase
