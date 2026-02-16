@@ -22,7 +22,8 @@ from starlette.requests import Request
 # Configure logging to stderr (CRITICAL: never write to stdout for stdio transport)
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
     stream=sys.stderr,
 )
 logger = logging.getLogger("qms-mcp")
@@ -55,9 +56,9 @@ class IdentityLock:
 
 
 # TTL for identity locks. After this duration without a heartbeat (HTTP request),
-# the lock expires and the identity becomes available again. 5 minutes is long
+# the lock expires and the identity becomes available again. 90 seconds is long
 # enough to span idle gaps between MCP calls but short enough for crash recovery.
-IDENTITY_LOCK_TTL_SECONDS: float = 300.0
+IDENTITY_LOCK_TTL_SECONDS: float = 90.0
 
 # In-memory registry mapping identity -> IdentityLock.
 # Thread safety note: FastMCP with uvicorn uses a single event loop thread for
@@ -344,6 +345,7 @@ def run_qms_command(args: list[str], user: str) -> dict:
         }
 
     cmd = [sys.executable, str(qms_script), "--user", user] + args
+    logger.info("Tool invocation: user=%s, args=%s", user, args)
 
     try:
         result = subprocess.run(
@@ -359,8 +361,10 @@ def run_qms_command(args: list[str], user: str) -> dict:
         if result.stderr:
             output += "\n" + result.stderr if output else result.stderr
 
+        success = result.returncode == 0
+        logger.info("Tool result: user=%s, args=%s, success=%s", user, args, success)
         return {
-            "success": result.returncode == 0,
+            "success": success,
             "output": output.strip() if output else "(no output)",
             "return_code": result.returncode,
         }
