@@ -105,37 +105,6 @@ class Status(Enum):
 
 
 # =============================================================================
-# State Transitions
-# =============================================================================
-
-# Valid status transitions
-TRANSITIONS = {
-    # Non-executable
-    # BUGFIX: Allow DRAFT -> IN_POST_REVIEW for post-release checkout/checkin cycle
-    # The route command checks execution_phase before allowing this transition
-    Status.DRAFT: [Status.IN_REVIEW, Status.IN_PRE_REVIEW, Status.IN_POST_REVIEW],
-    Status.IN_REVIEW: [Status.REVIEWED],
-    Status.REVIEWED: [Status.IN_REVIEW, Status.IN_APPROVAL],
-    Status.IN_APPROVAL: [Status.APPROVED, Status.REVIEWED],  # REVIEWED on rejection
-    Status.APPROVED: [Status.EFFECTIVE],
-    Status.EFFECTIVE: [],
-
-    # Executable
-    Status.IN_PRE_REVIEW: [Status.PRE_REVIEWED],
-    Status.PRE_REVIEWED: [Status.IN_PRE_REVIEW, Status.IN_PRE_APPROVAL],
-    Status.IN_PRE_APPROVAL: [Status.PRE_APPROVED, Status.PRE_REVIEWED],  # PRE_REVIEWED on rejection
-    Status.PRE_APPROVED: [Status.IN_EXECUTION],
-    Status.IN_EXECUTION: [Status.IN_POST_REVIEW],
-    Status.IN_POST_REVIEW: [Status.POST_REVIEWED],
-    Status.POST_REVIEWED: [Status.IN_POST_REVIEW, Status.IN_POST_APPROVAL, Status.IN_EXECUTION],
-    Status.IN_POST_APPROVAL: [Status.POST_APPROVED, Status.POST_REVIEWED],  # POST_REVIEWED on rejection
-    Status.POST_APPROVED: [Status.CLOSED],
-    Status.CLOSED: [],
-    Status.RETIRED: [],
-}
-
-
-# =============================================================================
 # Document Types
 # =============================================================================
 

@@ -4,6 +4,7 @@ Test Prompt Registry
 Tests for the PromptRegistry that generates configurable task prompts.
 
 Created as part of CR-026: QMS CLI Extensibility Refactoring
+Updated in CR-087: Remove in-memory fallback tests; verify YAML-only behavior
 """
 import sys
 from pathlib import Path
@@ -17,8 +18,7 @@ if str(QMS_CLI_DIR) not in sys.path:
 
 from prompts import (
     PromptRegistry, PromptConfig, ChecklistItem,
-    get_prompt_registry, DEFAULT_REVIEW_CONFIG, DEFAULT_APPROVAL_CONFIG,
-    CR_POST_REVIEW_CONFIG, SOP_REVIEW_CONFIG,
+    get_prompt_registry,
     load_config_from_yaml, get_prompt_file_path, PROMPTS_DIR
 )
 
@@ -33,14 +33,14 @@ class TestPromptRegistry:
         assert registry1 is registry2
 
     def test_has_default_review_config(self):
-        """Registry has default review configuration."""
+        """Registry has default review configuration from YAML."""
         registry = PromptRegistry()
         config = registry.get_config("REVIEW", "REVIEW", "UNKNOWN")
         assert config is not None
         assert len(config.checklist_items) > 0
 
     def test_has_default_approval_config(self):
-        """Registry has default approval configuration."""
+        """Registry has default approval configuration from YAML."""
         registry = PromptRegistry()
         config = registry.get_config("APPROVAL", "APPROVAL", "UNKNOWN")
         assert config is not None
@@ -80,30 +80,11 @@ class TestPromptRegistry:
         assert len(config1.checklist_items) == len(config2.checklist_items)
         assert len(config1.critical_reminders) == len(config2.critical_reminders)
 
-    def test_register_custom_config(self):
-        """In-memory registration is used as fallback when no YAML files exist.
-
-        Note (CR-027): YAML file loading takes priority over in-memory registration.
-        This test verifies the in-memory registration mechanism still works by testing
-        that configs can be registered and stored internally. In practice, YAML files
-        should be used for all prompt customization.
-        """
+    def test_raises_on_missing_yaml(self):
+        """get_config raises FileNotFoundError when no YAML file exists."""
         registry = PromptRegistry()
-        custom_config = PromptConfig(
-            checklist_items=[
-                ChecklistItem("Custom", "Custom check item", "custom evidence")
-            ],
-            critical_reminders=["Custom reminder"]
-        )
-
-        # Register a custom config
-        registry.register("REVIEW", "CUSTOM_WORKFLOW", "CUSTOM_TYPE", custom_config)
-
-        # Verify it was stored in the internal registry
-        key = ("REVIEW", "CUSTOM_WORKFLOW", "CUSTOM_TYPE")
-        assert key in registry._configs
-        assert registry._configs[key] is custom_config
-        assert registry._configs[key].checklist_items[0].item == "Custom check item"
+        with pytest.raises(FileNotFoundError, match="No prompt configuration found"):
+            registry.get_config("NONEXISTENT_TASK", "NONEXISTENT_WORKFLOW", "NONEXISTENT_TYPE")
 
 
 class TestPromptGeneration:
@@ -309,49 +290,6 @@ class TestPromptConfig:
         assert len(config.critical_reminders) == 2
 
 
-class TestDefaultConfigs:
-    """Tests for default configurations."""
-
-    def test_default_review_config_has_frontmatter_checks(self):
-        """Default review config includes frontmatter verification."""
-        frontmatter_items = [
-            item for item in DEFAULT_REVIEW_CONFIG.checklist_items
-            if "frontmatter" in item.category.lower() or "title" in item.item.lower()
-        ]
-        assert len(frontmatter_items) > 0
-
-    def test_default_review_config_has_structure_checks(self):
-        """Default review config includes structure verification."""
-        structure_items = [
-            item for item in DEFAULT_REVIEW_CONFIG.checklist_items
-            if "structure" in item.category.lower()
-        ]
-        assert len(structure_items) > 0
-
-    def test_default_review_config_has_content_checks(self):
-        """Default review config includes content verification."""
-        content_items = [
-            item for item in DEFAULT_REVIEW_CONFIG.checklist_items
-            if "content" in item.category.lower()
-        ]
-        assert len(content_items) > 0
-
-    def test_default_approval_config_has_checks(self):
-        """Default approval config has pre-approval checks."""
-        assert len(DEFAULT_APPROVAL_CONFIG.checklist_items) > 0
-        assert len(DEFAULT_APPROVAL_CONFIG.critical_reminders) > 0
-
-    def test_cr_post_review_extends_default(self):
-        """CR post-review config extends default with execution checks."""
-        # CR post-review should have more items than default
-        assert len(CR_POST_REVIEW_CONFIG.checklist_items) >= len(DEFAULT_REVIEW_CONFIG.checklist_items)
-
-    def test_sop_review_extends_default(self):
-        """SOP review config extends default with procedure checks."""
-        # SOP review should have more items than default
-        assert len(SOP_REVIEW_CONFIG.checklist_items) >= len(DEFAULT_REVIEW_CONFIG.checklist_items)
-
-
 # =============================================================================
 # CR-027: YAML File Loading Tests
 # =============================================================================
@@ -483,5 +421,26 @@ class TestYamlIntegration:
         config = registry.get_config("APPROVAL", "PRE_APPROVAL", "CR")
 
         # Should have approval checks
+        assert len(config.checklist_items) > 0
+        assert len(config.critical_reminders) > 0
+
+
+class TestYamlCompleteness:
+    """Tests verifying YAML file coverage for all expected prompt combinations (CR-087)."""
+
+    @pytest.mark.parametrize("task_type,workflow_type,doc_type", [
+        ("REVIEW", "REVIEW", "SOP"),
+        ("REVIEW", "PRE_REVIEW", "CR"),
+        ("REVIEW", "POST_REVIEW", "CR"),
+        ("REVIEW", "PRE_REVIEW", "INV"),
+        ("APPROVAL", "APPROVAL", "SOP"),
+        ("APPROVAL", "PRE_APPROVAL", "CR"),
+        ("APPROVAL", "POST_APPROVAL", "CR"),
+    ])
+    def test_yaml_resolves_for_common_combinations(self, task_type, workflow_type, doc_type):
+        """YAML fallback chain resolves for all common task/workflow/doctype combinations."""
+        registry = PromptRegistry()
+        config = registry.get_config(task_type, workflow_type, doc_type)
+        assert config is not None
         assert len(config.checklist_items) > 0
         assert len(config.critical_reminders) > 0

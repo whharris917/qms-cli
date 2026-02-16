@@ -17,17 +17,7 @@ from qms_paths import USERS_ROOT, get_doc_type, get_doc_path
 from qms_auth import get_current_user, verify_user_identity
 from qms_meta import read_meta, write_meta
 from qms_audit import log_withdraw
-
-
-# REQ-WF-018: Withdraw status transitions
-WITHDRAW_TRANSITIONS = {
-    Status.IN_REVIEW: Status.DRAFT,
-    Status.IN_APPROVAL: Status.REVIEWED,
-    Status.IN_PRE_REVIEW: Status.DRAFT,
-    Status.IN_PRE_APPROVAL: Status.PRE_REVIEWED,
-    Status.IN_POST_REVIEW: Status.IN_EXECUTION,
-    Status.IN_POST_APPROVAL: Status.POST_REVIEWED,
-}
+from workflow import WITHDRAW_TRANSITIONS
 
 
 @CommandRegistry.register(

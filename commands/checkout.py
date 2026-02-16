@@ -13,11 +13,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
-from qms_paths import PROJECT_ROOT, get_doc_type, get_doc_path, get_workspace_path
+from qms_config import Status
+from qms_paths import PROJECT_ROOT, USERS_ROOT, get_doc_type, get_doc_path, get_workspace_path
 from qms_io import parse_frontmatter, write_document_minimal
 from qms_auth import get_current_user, check_permission, verify_user_identity
 from qms_meta import read_meta, write_meta, update_meta_checkout
-from qms_audit import log_checkout
+from qms_audit import log_checkout, log_withdraw
+from workflow import CHECKOUT_TRANSITIONS, WITHDRAW_TRANSITIONS
 
 
 def clear_workflow_tracking(meta: dict) -> dict:
@@ -58,6 +60,34 @@ def cmd_checkout(args) -> int:
     current_status = meta.get("status", "DRAFT")
 
     if draft_path.exists():
+        # REQ-WF-022: Auto-withdraw from active workflow states
+        status_enum = Status(current_status)
+        if status_enum in WITHDRAW_TRANSITIONS:
+            doc_owner = meta.get("responsible_user")
+            if doc_owner != user:
+                print(f"Error: {doc_id} is in {current_status} and owned by {doc_owner or 'unknown'}")
+                print(f"Only the document owner can checkout from an active workflow")
+                return 1
+            # Perform implicit withdraw
+            old_status = current_status
+            new_status = WITHDRAW_TRANSITIONS[status_enum]
+            log_withdraw(doc_id, doc_type, user, meta.get("version", "0.1"), old_status, new_status.value)
+            meta["status"] = new_status.value
+            meta["pending_assignees"] = []
+            meta["completed_reviewers"] = []
+            meta["review_outcomes"] = {}
+            write_meta(doc_id, doc_type, meta)
+            # Clean up inbox tasks
+            for user_dir in USERS_ROOT.iterdir():
+                if user_dir.is_dir():
+                    inbox = user_dir / "inbox"
+                    if inbox.exists():
+                        for keyword in ["review", "approval", "pre_review", "pre_approval", "post_review", "post_approval"]:
+                            for task_file in inbox.glob(f"task-{doc_id}-{keyword}*.md"):
+                                task_file.unlink()
+            current_status = new_status.value
+            print(f"Auto-withdrawn: {old_status} -> {current_status}")
+
         # Already a draft - check if already checked out (from .meta)
         if meta.get("checked_out"):
             current_owner = meta.get("responsible_user", "unknown")
@@ -74,17 +104,13 @@ def cmd_checkout(args) -> int:
         # Check out existing draft - update .meta
         version = meta.get("version", "0.1")
 
-        # REQ-WF-016: PRE_APPROVED checkout -> DRAFT
-        if current_status == "PRE_APPROVED":
+        # CR-087: Central checkout transition lookup (REQ-WF-016, REQ-WF-017)
+        checkout_status = Status(current_status)
+        if checkout_status in CHECKOUT_TRANSITIONS:
+            target_status = CHECKOUT_TRANSITIONS[checkout_status]
             meta = clear_workflow_tracking(meta)
-            meta["status"] = "DRAFT"
-            print(f"Transitioned from PRE_APPROVED to DRAFT for scope revision")
-
-        # REQ-WF-017: POST_REVIEWED checkout -> IN_EXECUTION
-        elif current_status == "POST_REVIEWED":
-            meta = clear_workflow_tracking(meta)
-            meta["status"] = "IN_EXECUTION"
-            print(f"Transitioned from POST_REVIEWED to IN_EXECUTION for continued execution")
+            meta["status"] = target_status.value
+            print(f"Transitioned from {current_status} to {target_status.value}")
 
         # REQ-WF-021: IN_EXECUTION checkout increments minor version
         # Create N.(X+1) in workspace while N.X remains current in QMS

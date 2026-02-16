@@ -181,6 +181,7 @@ Examples:
     print(f"Created: {doc_id} (v0.1, DRAFT)")
     print(f"Location: {draft_path.relative_to(PROJECT_ROOT)}")
     print(f"Workspace: {workspace_path.relative_to(PROJECT_ROOT)}")
+    print(f"Document is checked out and ready for editing.")
     print(f"Responsible User: {user}")
 
     return 0
