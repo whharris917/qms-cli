@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict, Set, Tuple
 
-from qms_config import Status, TRANSITIONS
+from qms_config import Status
 
 
 class WorkflowType(Enum):
@@ -42,6 +42,8 @@ class Action(Enum):
     RELEASE = "release"
     REVERT = "revert"
     CLOSE = "close"
+    CHECKOUT = "checkout"
+    WITHDRAW = "withdraw"
 
 
 @dataclass
@@ -277,7 +279,109 @@ WORKFLOW_TRANSITIONS: List[StatusTransition] = [
         clears_owner=True,
         for_executable=True,
     ),
+
+    # --- CHECKOUT (status-changing only; CR-087) ---
+    # REQ-WF-016: PRE_APPROVED checkout -> DRAFT (scope revision)
+    StatusTransition(
+        from_status=Status.PRE_APPROVED,
+        to_status=Status.DRAFT,
+        action=Action.CHECKOUT,
+        for_executable=True,
+    ),
+    # REQ-WF-017: POST_REVIEWED checkout -> IN_EXECUTION (continued execution)
+    StatusTransition(
+        from_status=Status.POST_REVIEWED,
+        to_status=Status.IN_EXECUTION,
+        action=Action.CHECKOUT,
+        for_executable=True,
+    ),
+
+    # --- WITHDRAW (REQ-WF-018; CR-087) ---
+    # Non-executable
+    StatusTransition(
+        from_status=Status.IN_REVIEW,
+        to_status=Status.DRAFT,
+        action=Action.WITHDRAW,
+        for_executable=False,
+    ),
+    StatusTransition(
+        from_status=Status.IN_APPROVAL,
+        to_status=Status.REVIEWED,
+        action=Action.WITHDRAW,
+        for_executable=False,
+    ),
+    # Executable pre-release
+    StatusTransition(
+        from_status=Status.IN_PRE_REVIEW,
+        to_status=Status.DRAFT,
+        action=Action.WITHDRAW,
+        for_executable=True,
+    ),
+    StatusTransition(
+        from_status=Status.IN_PRE_APPROVAL,
+        to_status=Status.PRE_REVIEWED,
+        action=Action.WITHDRAW,
+        for_executable=True,
+    ),
+    # Executable post-release
+    StatusTransition(
+        from_status=Status.IN_POST_REVIEW,
+        to_status=Status.IN_EXECUTION,
+        action=Action.WITHDRAW,
+        for_executable=True,
+    ),
+    StatusTransition(
+        from_status=Status.IN_POST_APPROVAL,
+        to_status=Status.POST_REVIEWED,
+        action=Action.WITHDRAW,
+        for_executable=True,
+    ),
 ]
+
+
+# =============================================================================
+# Derived Transition Maps (CR-087)
+# =============================================================================
+
+def _derive_transitions_dict() -> Dict[Status, list]:
+    """
+    Derive the TRANSITIONS validation dict from WORKFLOW_TRANSITIONS.
+
+    Collects all unique (from_status, to_status) pairs into a dict suitable
+    for low-level transition validation. This replaces the hand-maintained
+    TRANSITIONS dict that was previously in qms_config.py.
+    """
+    transitions: Dict[Status, list] = {}
+    for t in WORKFLOW_TRANSITIONS:
+        if t.from_status not in transitions:
+            transitions[t.from_status] = []
+        if t.to_status not in transitions[t.from_status]:
+            transitions[t.from_status].append(t.to_status)
+    # Ensure terminal states have entries
+    for status in [Status.EFFECTIVE, Status.CLOSED, Status.RETIRED]:
+        if status not in transitions:
+            transitions[status] = []
+    return transitions
+
+
+def _derive_action_map(action: Action) -> Dict[Status, Status]:
+    """
+    Derive a status-to-status map for a specific action.
+
+    Used for CHECKOUT and WITHDRAW lookups where each from_status
+    has exactly one valid to_status for that action.
+    """
+    return {
+        t.from_status: t.to_status
+        for t in WORKFLOW_TRANSITIONS
+        if t.action == action
+    }
+
+
+# Single source of truth: all derived from WORKFLOW_TRANSITIONS
+TRANSITIONS = _derive_transitions_dict()
+WITHDRAW_TRANSITIONS = _derive_action_map(Action.WITHDRAW)
+CHECKOUT_TRANSITIONS = _derive_action_map(Action.CHECKOUT)
 
 
 class WorkflowEngine:

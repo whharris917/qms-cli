@@ -14,13 +14,13 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
-from qms_config import Status, TRANSITIONS
+from qms_config import Status
 from qms_paths import get_doc_type, get_doc_path, get_inbox_path
 from qms_auth import get_current_user, check_permission, verify_user_identity
 from qms_templates import generate_review_task_content, generate_approval_task_content
 from qms_meta import read_meta, write_meta, update_meta_route, check_approval_gate
 from qms_audit import log_route_review, log_route_approval, log_status_change
-from workflow import get_workflow_engine, Action, ExecutionPhase
+from workflow import get_workflow_engine, Action, ExecutionPhase, TRANSITIONS
 
 
 @CommandRegistry.register(

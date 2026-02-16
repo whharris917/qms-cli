@@ -13,11 +13,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
+from qms_config import Status
 from qms_paths import PROJECT_ROOT, get_doc_type, get_doc_path, get_workspace_path
 from qms_io import parse_frontmatter, write_document_minimal
 from qms_auth import get_current_user, check_permission, verify_user_identity
 from qms_meta import read_meta, write_meta, update_meta_checkout
 from qms_audit import log_checkout
+from workflow import CHECKOUT_TRANSITIONS
 
 
 def clear_workflow_tracking(meta: dict) -> dict:
@@ -74,17 +76,13 @@ def cmd_checkout(args) -> int:
         # Check out existing draft - update .meta
         version = meta.get("version", "0.1")
 
-        # REQ-WF-016: PRE_APPROVED checkout -> DRAFT
-        if current_status == "PRE_APPROVED":
+        # CR-087: Central checkout transition lookup (REQ-WF-016, REQ-WF-017)
+        checkout_status = Status(current_status)
+        if checkout_status in CHECKOUT_TRANSITIONS:
+            target_status = CHECKOUT_TRANSITIONS[checkout_status]
             meta = clear_workflow_tracking(meta)
-            meta["status"] = "DRAFT"
-            print(f"Transitioned from PRE_APPROVED to DRAFT for scope revision")
-
-        # REQ-WF-017: POST_REVIEWED checkout -> IN_EXECUTION
-        elif current_status == "POST_REVIEWED":
-            meta = clear_workflow_tracking(meta)
-            meta["status"] = "IN_EXECUTION"
-            print(f"Transitioned from POST_REVIEWED to IN_EXECUTION for continued execution")
+            meta["status"] = target_status.value
+            print(f"Transitioned from {current_status} to {target_status.value}")
 
         # REQ-WF-021: IN_EXECUTION checkout increments minor version
         # Create N.(X+1) in workspace while N.X remains current in QMS

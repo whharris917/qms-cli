@@ -115,7 +115,6 @@ def test_qms_config_has_required_exports():
 
     required_exports = [
         "Status",
-        "TRANSITIONS",
         "DOCUMENT_TYPES",
         "VALID_USERS",
         "USER_GROUPS",
