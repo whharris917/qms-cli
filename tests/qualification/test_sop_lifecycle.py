@@ -476,26 +476,28 @@ def test_approval_gate_requires_quality_review(temp_project):
 # Test: Checked-in Requirement for Routing
 # ============================================================================
 
-def test_routing_requires_checkin(temp_project):
+def test_routing_auto_checkin(temp_project):
     """
-    Routing for review/approval requires document to be checked in.
+    Routing while checked out auto-checks-in for the owner (REQ-WF-023).
+    Non-owner routing while checked out is still rejected (REQ-WF-015).
 
-    Verifies: REQ-WF-015
+    Verifies: REQ-WF-015, REQ-WF-023
     """
-    # Create document (auto-checks out)
+    # Create document (auto-checks out by claude)
     run_qms(temp_project, "claude", "create", "SOP", "--title", "Routing Checkin Test")
 
     meta = read_meta(temp_project, "SOP-001", "SOP")
     assert meta["checked_out"] == True
 
-    # [REQ-WF-015] Attempt to route while checked out - should fail
+    # [REQ-WF-023] Owner routes while checked out - should auto-checkin and succeed
     result = run_qms(temp_project, "claude", "route", "SOP-001", "--review")
-    assert result.returncode != 0, "Routing should fail while document is checked out"
+    assert result.returncode == 0, "Owner routing should auto-checkin and succeed"
+    assert "Auto-checked-in" in result.stdout
 
-    # Checkin and retry
-    run_qms(temp_project, "claude", "checkin", "SOP-001")
-    result = run_qms(temp_project, "claude", "route", "SOP-001", "--review")
-    assert result.returncode == 0, "Routing should succeed after checkin"
+    # Verify document is no longer checked out and is in review
+    meta = read_meta(temp_project, "SOP-001", "SOP")
+    assert meta["checked_out"] == False
+    assert meta["status"] == "IN_REVIEW"
 
 
 # ============================================================================
