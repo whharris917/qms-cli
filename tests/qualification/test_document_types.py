@@ -888,3 +888,237 @@ def test_create_add_rejects_invalid_parent_type(temp_project):
     result = run_qms(temp_project, "claude", "create", "ADD", "--parent", "CR-001-TP-001",
                      "--title", "Should Fail")
     assert result.returncode != 0, "ADD creation should be rejected for TP parent"
+
+
+# ============================================================================
+# Helper: Drive document to IN_EXECUTION state
+# ============================================================================
+
+def release_to_execution(temp_project, doc_id):
+    """Drive a document through pre-review, pre-approval, and release to IN_EXECUTION.
+
+    The document must already exist and be checked in (DRAFT, not checked out).
+    """
+    # Pre-review
+    run_qms(temp_project, "claude", "route", doc_id, "--review")
+    run_qms(temp_project, "qa", "review", doc_id, "--recommend", "--comment", "OK")
+    # Pre-approval
+    run_qms(temp_project, "claude", "route", doc_id, "--approval")
+    run_qms(temp_project, "qa", "approve", doc_id)
+    # Release to execution
+    result = run_qms(temp_project, "claude", "release", doc_id)
+    assert result.returncode == 0, f"Failed to release {doc_id}: {result.stderr}"
+
+
+# ============================================================================
+# Test: VR Document Type
+# ============================================================================
+
+def test_create_vr_under_cr(temp_project):
+    """
+    VR is created as a child of an IN_EXECUTION CR, stored in CR's folder.
+
+    Verifies: REQ-DOC-001, REQ-DOC-002, REQ-DOC-016
+    """
+    # Create parent CR and release to IN_EXECUTION
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Parent CR for VR")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    release_to_execution(temp_project, "CR-001")
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "IN_EXECUTION"
+
+    # [REQ-DOC-001] [REQ-DOC-002] [REQ-DOC-016] Create VR under IN_EXECUTION CR
+    result = run_qms(temp_project, "claude", "create", "VR", "--parent", "CR-001",
+                     "--title", "Verify health check")
+    assert result.returncode == 0, f"Create VR failed: {result.stderr}"
+
+    # Verify VR is in CR's folder
+    cr_folder = temp_project / "QMS" / "CR" / "CR-001"
+    assert (cr_folder / "CR-001-VR-001-draft.md").exists(), "VR should be in CR folder"
+
+    # Verify metadata
+    vr_meta = read_meta(temp_project, "CR-001-VR-001", "VR")
+    assert vr_meta is not None, "VR metadata should exist"
+    assert vr_meta["doc_type"] == "VR"
+    assert vr_meta["executable"] == True
+
+
+def test_create_vr_under_var(temp_project):
+    """
+    VR is created as a child of an IN_EXECUTION VAR, stored in parent CR's folder.
+
+    Verifies: REQ-DOC-002, REQ-DOC-005
+    """
+    # Create CR and release to IN_EXECUTION
+    run_qms(temp_project, "claude", "create", "CR", "--title", "CR for VAR-VR")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    release_to_execution(temp_project, "CR-001")
+
+    # Create VAR under CR (VAR created during parent execution)
+    result = run_qms(temp_project, "claude", "create", "VAR", "--parent", "CR-001",
+                     "--title", "VAR for VR test")
+    assert result.returncode == 0, f"Create VAR failed: {result.stderr}"
+
+    # Drive VAR to IN_EXECUTION
+    run_qms(temp_project, "claude", "checkin", "CR-001-VAR-001")
+    release_to_execution(temp_project, "CR-001-VAR-001")
+
+    var_meta = read_meta(temp_project, "CR-001-VAR-001", "VAR")
+    assert var_meta["status"] == "IN_EXECUTION"
+
+    # [REQ-DOC-002] [REQ-DOC-005] Create VR under VAR
+    result = run_qms(temp_project, "claude", "create", "VR", "--parent", "CR-001-VAR-001",
+                     "--title", "Verify VAR implementation")
+    assert result.returncode == 0, f"Create VR under VAR failed: {result.stderr}"
+
+    # Verify VR is in CR's folder (VAR and VR both resolve to parent CR folder)
+    cr_folder = temp_project / "QMS" / "CR" / "CR-001"
+    assert (cr_folder / "CR-001-VAR-001-VR-001-draft.md").exists(), \
+        "VR under VAR should be in parent CR folder"
+
+    # Verify metadata
+    vr_meta = read_meta(temp_project, "CR-001-VAR-001-VR-001", "VR")
+    assert vr_meta is not None
+    assert vr_meta["doc_type"] == "VR"
+
+
+def test_create_vr_under_add(temp_project):
+    """
+    VR is created as a child of an IN_EXECUTION ADD, stored in parent CR's folder.
+
+    Verifies: REQ-DOC-002, REQ-DOC-005
+    """
+    # Create CR and close it (ADD requires CLOSED parent)
+    run_qms(temp_project, "claude", "create", "CR", "--title", "CR for ADD-VR")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    close_cr(temp_project, "CR-001")
+
+    # Create ADD under CLOSED CR
+    result = run_qms(temp_project, "claude", "create", "ADD", "--parent", "CR-001",
+                     "--title", "ADD for VR test")
+    assert result.returncode == 0, f"Create ADD failed: {result.stderr}"
+
+    # Drive ADD to IN_EXECUTION
+    run_qms(temp_project, "claude", "checkin", "CR-001-ADD-001")
+    release_to_execution(temp_project, "CR-001-ADD-001")
+
+    add_meta = read_meta(temp_project, "CR-001-ADD-001", "ADD")
+    assert add_meta["status"] == "IN_EXECUTION"
+
+    # [REQ-DOC-002] [REQ-DOC-005] Create VR under ADD
+    result = run_qms(temp_project, "claude", "create", "VR", "--parent", "CR-001-ADD-001",
+                     "--title", "Verify ADD implementation")
+    assert result.returncode == 0, f"Create VR under ADD failed: {result.stderr}"
+
+    # Verify VR is in CR's folder
+    cr_folder = temp_project / "QMS" / "CR" / "CR-001"
+    assert (cr_folder / "CR-001-ADD-001-VR-001-draft.md").exists(), \
+        "VR under ADD should be in parent CR folder"
+
+
+def test_vr_requires_parent(temp_project):
+    """
+    VR creation requires --parent flag.
+
+    Verifies: REQ-DOC-002
+    """
+    # [REQ-DOC-002] Attempt VR creation without --parent
+    result = run_qms(temp_project, "claude", "create", "VR", "--title", "No Parent")
+    assert result.returncode != 0, "VR creation should require --parent flag"
+    assert "parent" in result.stdout.lower() or "parent" in result.stderr.lower(), \
+        "Error should mention parent requirement"
+
+
+def test_vr_rejects_invalid_parent_type(temp_project):
+    """
+    VR creation is rejected when parent is TP (invalid parent type).
+
+    Verifies: REQ-DOC-002
+    """
+    # Create CR and TP
+    run_qms(temp_project, "claude", "create", "CR", "--title", "CR for VR-TP test")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+
+    run_qms(temp_project, "claude", "create", "TP", "--parent", "CR-001",
+            "--title", "Test Protocol")
+    run_qms(temp_project, "claude", "checkin", "CR-001-TP-001")
+
+    # [REQ-DOC-002] Attempt VR creation under TP - should fail
+    result = run_qms(temp_project, "claude", "create", "VR", "--parent", "CR-001-TP-001",
+                     "--title", "Should Fail")
+    assert result.returncode != 0, "VR creation should be rejected for TP parent"
+
+
+def test_vr_requires_in_execution_parent(temp_project):
+    """
+    VR creation is rejected when parent is not IN_EXECUTION.
+
+    Verifies: REQ-DOC-016
+    """
+    # Create CR but leave at DRAFT
+    run_qms(temp_project, "claude", "create", "CR", "--title", "Non-execution CR")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+
+    meta = read_meta(temp_project, "CR-001", "CR")
+    assert meta["status"] == "DRAFT"
+
+    # [REQ-DOC-016] Attempt VR creation - should fail
+    result = run_qms(temp_project, "claude", "create", "VR", "--parent", "CR-001",
+                     "--title", "Should Fail")
+    assert result.returncode != 0, "VR creation should be rejected for non-IN_EXECUTION parent"
+    assert "IN_EXECUTION" in result.stdout or "IN_EXECUTION" in result.stderr, \
+        "Error should mention IN_EXECUTION requirement"
+
+
+def test_vr_born_in_execution(temp_project):
+    """
+    VR is created with initial status IN_EXECUTION, version 1.0, execution_phase post_release.
+
+    Verifies: REQ-DOC-017
+    """
+    # Create CR and release to IN_EXECUTION
+    run_qms(temp_project, "claude", "create", "CR", "--title", "CR for VR birth test")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    release_to_execution(temp_project, "CR-001")
+
+    # [REQ-DOC-017] Create VR
+    result = run_qms(temp_project, "claude", "create", "VR", "--parent", "CR-001",
+                     "--title", "Verify behavior")
+    assert result.returncode == 0, f"Create VR failed: {result.stderr}"
+
+    # Verify VR initial state
+    vr_meta = read_meta(temp_project, "CR-001-VR-001", "VR")
+    assert vr_meta["status"] == "IN_EXECUTION", "VR should be born IN_EXECUTION"
+    assert vr_meta["version"] == "1.0", "VR should be born at version 1.0"
+    assert vr_meta["execution_phase"] == "post_release", "VR execution_phase should be post_release"
+    assert vr_meta["checked_out"] == True, "VR should be checked out at creation"
+    assert vr_meta["executable"] == True, "VR should be executable"
+
+
+def test_vr_sequential_id_generation(temp_project):
+    """
+    Multiple VRs under the same parent get sequential IDs.
+
+    Verifies: REQ-DOC-005
+    """
+    # Create CR and release to IN_EXECUTION
+    run_qms(temp_project, "claude", "create", "CR", "--title", "CR for sequential VRs")
+    run_qms(temp_project, "claude", "checkin", "CR-001")
+    release_to_execution(temp_project, "CR-001")
+
+    # [REQ-DOC-005] Create multiple VRs
+    result = run_qms(temp_project, "claude", "create", "VR", "--parent", "CR-001",
+                     "--title", "First VR")
+    assert result.returncode == 0
+    result = run_qms(temp_project, "claude", "create", "VR", "--parent", "CR-001",
+                     "--title", "Second VR")
+    assert result.returncode == 0
+    result = run_qms(temp_project, "claude", "create", "VR", "--parent", "CR-001",
+                     "--title", "Third VR")
+    assert result.returncode == 0
+
+    cr_folder = temp_project / "QMS" / "CR" / "CR-001"
+    assert (cr_folder / "CR-001-VR-001-draft.md").exists()
+    assert (cr_folder / "CR-001-VR-002-draft.md").exists()
+    assert (cr_folder / "CR-001-VR-003-draft.md").exists()

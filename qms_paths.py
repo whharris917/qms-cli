@@ -96,6 +96,8 @@ def get_doc_type(doc_id: str) -> str:
     if "-TP-" in doc_id:
         # CR-034: TP now uses sequential format: CR-001-TP-001
         return "TP"
+    if re.search(r'-VR-\d{3}$', doc_id):
+        return "VR"
     if re.search(r'-ADD-\d{3}$', doc_id):
         return "ADD"
     if "-VAR-" in doc_id:
@@ -121,8 +123,8 @@ def get_doc_path(doc_id: str, draft: bool = False) -> Path:
     base_path = QMS_ROOT / config["path"]
 
     # Handle nested document types that live in parent's folder
-    if doc_type in ("VAR", "ADD"):
-        # CR-032 Gap 4: Derive path from parent type, not VAR/ADD config
+    if doc_type in ("VAR", "VR", "ADD"):
+        # CR-032 Gap 4: Derive path from parent type, not VAR/VR/ADD config
         # CR-028-VAR-001 -> CR-028 (in CR/), INV-001-VAR-001 -> INV-001 (in INV/)
         # CR-028-ADD-001 -> CR-028 (in CR/), CR-028-VAR-001-ADD-001 -> CR-028 (in CR/)
         match = re.match(r"((?:CR|INV)-\d+)", doc_id)
@@ -154,8 +156,8 @@ def get_archive_path(doc_id: str, version: str) -> Path:
 
     base_path = ARCHIVE_ROOT / config["path"]
 
-    # CR-032 Gap 4: VAR/ADD path derived from parent type
-    if doc_type in ("VAR", "ADD"):
+    # CR-032 Gap 4: VAR/VR/ADD path derived from parent type
+    if doc_type in ("VAR", "VR", "ADD"):
         match = re.match(r"((?:CR|INV)-\d+)", doc_id)
         if match:
             parent_id = match.group(1)
@@ -221,7 +223,16 @@ def get_next_nested_number(parent_id: str, child_type: str) -> int:
     if parent_config.get("folder_per_doc"):
         base_path = QMS_ROOT / parent_config["path"] / parent_id
     else:
-        base_path = QMS_ROOT / parent_config["path"]
+        # For deeply nested parents (e.g., VR under VAR, ADD under VAR),
+        # resolve to the top-level CR/INV folder where files are stored
+        match = re.match(r"((?:CR|INV)-\d+)", parent_id)
+        if match:
+            top_id = match.group(1)
+            top_type = "CR" if top_id.startswith("CR-") else "INV"
+            top_config = all_types[top_type]
+            base_path = QMS_ROOT / top_config["path"] / top_id
+        else:
+            base_path = QMS_ROOT / parent_config["path"]
 
     if not base_path.exists():
         return 1

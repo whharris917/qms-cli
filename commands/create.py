@@ -57,7 +57,7 @@ def cmd_create(args) -> int:
 
     # Handle parent document requirement for VAR, TP, and ER types (CR-032 Gap 3, CR-036-VAR-005)
     parent_id = getattr(args, 'parent', None)
-    if doc_type in ("VAR", "TP", "ER", "ADD"):
+    if doc_type in ("VAR", "TP", "ER", "ADD", "VR"):
         if not parent_id:
             print(f"Error: {doc_type} documents require --parent flag")
             if doc_type == "ER":
@@ -82,6 +82,10 @@ def cmd_create(args) -> int:
             if doc_type == "ADD" and parent_type not in ("CR", "INV", "VAR", "ADD"):
                 print("Error: ADD documents must have a CR, INV, VAR, or ADD parent")
                 return 1
+            # VR must have CR, VAR, or ADD parent
+            if doc_type == "VR" and parent_type not in ("CR", "VAR", "ADD"):
+                print("Error: VR documents must have a CR, VAR, or ADD parent")
+                return 1
             parent_path = get_doc_path(parent_id)
             parent_draft = get_doc_path(parent_id, draft=True)
             if not parent_path.exists() and not parent_draft.exists():
@@ -93,6 +97,14 @@ def cmd_create(args) -> int:
                 parent_meta = read_meta(parent_id, parent_type)
                 if not parent_meta or parent_meta.get("status") != "CLOSED":
                     print(f"Error: ADD documents can only be created against CLOSED parents.")
+                    print(f"Parent {parent_id} is currently {parent_meta.get('status', 'UNKNOWN') if parent_meta else 'UNKNOWN'}.")
+                    return 1
+            # VR requires parent to be IN_EXECUTION
+            if doc_type == "VR":
+                from qms_meta import read_meta
+                parent_meta = read_meta(parent_id, parent_type)
+                if not parent_meta or parent_meta.get("status") != "IN_EXECUTION":
+                    print(f"Error: VR documents can only be created against IN_EXECUTION parents.")
                     print(f"Parent {parent_id} is currently {parent_meta.get('status', 'UNKNOWN') if parent_meta else 'UNKNOWN'}.")
                     return 1
         except ValueError as e:
@@ -114,6 +126,10 @@ def cmd_create(args) -> int:
         # ER nested under TP: CR-001-TP-001-ER-001 (CR-036-VAR-005)
         next_num = get_next_nested_number(parent_id, "ER")
         doc_id = f"{parent_id}-ER-{next_num:03d}"
+    elif doc_type == "VR" and parent_id:
+        # VR nested under parent: CR-001-VR-001, CR-001-VAR-001-VR-001
+        next_num = get_next_nested_number(parent_id, "VR")
+        doc_id = f"{parent_id}-VR-{next_num:03d}"
     elif doc_type == "ADD" and parent_id:
         # ADD nested under parent: CR-001-ADD-001, CR-001-VAR-001-ADD-001
         next_num = get_next_nested_number(parent_id, "ADD")
@@ -167,18 +183,25 @@ Examples:
         executable=config["executable"],
         responsible_user=user
     )
+
+    # REQ-DOC-017: VR born IN_EXECUTION — template is the pre-approval
+    if doc_type == "VR":
+        meta["status"] = "IN_EXECUTION"
+        meta["version"] = "1.0"
+        meta["execution_phase"] = "post_release"
+
     write_meta(doc_id, doc_type, meta)
 
     # DUAL-WRITE: Log CREATE event to audit trail
     title = args.title or f"{doc_type} - [Title]"
-    log_create(doc_id, doc_type, user, "0.1", title)
+    log_create(doc_id, doc_type, user, meta["version"], title)
 
     # Copy to user's workspace
     workspace_path = get_workspace_path(user, doc_id)
     workspace_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(draft_path, workspace_path)
 
-    print(f"Created: {doc_id} (v0.1, DRAFT)")
+    print(f"Created: {doc_id} (v{meta['version']}, {meta['status']})")
     print(f"Location: {draft_path.relative_to(PROJECT_ROOT)}")
     print(f"Workspace: {workspace_path.relative_to(PROJECT_ROOT)}")
     print(f"Document is checked out and ready for editing.")

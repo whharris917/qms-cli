@@ -31,10 +31,12 @@ def temp_project(tmp_path):
     (qms_root / ".meta" / "SOP").mkdir(parents=True)
     (qms_root / ".meta" / "CR").mkdir(parents=True)
     (qms_root / ".meta" / "INV").mkdir(parents=True)
+    (qms_root / ".meta" / "VR").mkdir(parents=True)
     (qms_root / ".archive" / "SOP").mkdir(parents=True)
     (qms_root / ".archive" / "CR").mkdir(parents=True)
     (qms_root / ".audit" / "SOP").mkdir(parents=True)
     (qms_root / ".audit" / "CR").mkdir(parents=True)
+    (qms_root / ".audit" / "VR").mkdir(parents=True)
 
     # Create user directories
     users_root = tmp_path / ".claude" / "users"
