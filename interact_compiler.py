@@ -7,6 +7,7 @@ given source and template, produce the same output deterministically.
 REQ-INT-016: Compilation
 
 Created as part of CR-091: Interaction System Engine
+Updated by CR-094: Interactive Compilation Defects
 """
 
 import re
@@ -18,16 +19,63 @@ from interact_source import (
 )
 
 
+def _strip_template_preamble(template_text: str) -> str:
+    """
+    Strip the template's own frontmatter and notice from the beginning.
+
+    Templates have two frontmatter blocks: the template's own metadata
+    (no placeholders) and the document's metadata (with {{}} placeholders).
+    This removes the template's FM and everything before the document's FM.
+
+    If only one FM block exists, it is kept as-is.
+    """
+    lines = template_text.split('\n')
+
+    # Find first two frontmatter blocks (pairs of --- lines)
+    fm_blocks = []  # (start_line_idx, end_line_idx)
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() == '---':
+            start = i
+            for j in range(i + 1, len(lines)):
+                if lines[j].strip() == '---':
+                    fm_blocks.append((start, j))
+                    i = j + 1
+                    break
+            else:
+                break  # No closing --- found
+        else:
+            i += 1
+        if len(fm_blocks) >= 2:
+            break
+
+    if len(fm_blocks) < 2:
+        return template_text
+
+    # If first FM block has no {{ placeholders, it's the template's own
+    first_start, first_end = fm_blocks[0]
+    first_fm_content = '\n'.join(lines[first_start:first_end + 1])
+    if '{{' not in first_fm_content:
+        second_start = fm_blocks[1][0]
+        return '\n'.join(lines[second_start:])
+
+    return template_text
+
+
 def compile_document(source: dict, template_text: str) -> str:
     """
     Compile an interactive source into markdown.
 
+    Pipeline:
+    0. Strip template preamble (template FM, notice comment)
     1. Strip all <!-- @... --> tags and guidance prose
-    2. Keep markdown structure (headings, tables, code blocks)
-    3. Substitute {{placeholders}} with active response values
-    4. Render amendment trails (strikethrough on superseded entries)
-    5. Show timestamps and author on all responses
-    6. Show commit hashes on commit-enabled responses
+       - @end-prompt marks the end of guidance
+    2. Substitute {{placeholders}} with context-aware rendering
+       - Table rows: value only, no attribution
+       - Block context: full response in blockquote
+       - Label/other: full response inline
+    3. Expand loop iterations with separated value/attribution
+    4. Clean up excessive blank lines
 
     Args:
         source: The source data dict
@@ -36,6 +84,9 @@ def compile_document(source: dict, template_text: str) -> str:
     Returns:
         Compiled markdown string
     """
+    # Phase 0: Strip template preamble
+    template_text = _strip_template_preamble(template_text)
+
     # Phase 1: Extract the template structure, stripping the header comment
     # and all guidance text between tags
     lines = template_text.split('\n')
@@ -43,7 +94,7 @@ def compile_document(source: dict, template_text: str) -> str:
     in_header_comment = False
     in_tag_comment = False
     skip_guidance = False
-    tag_comment_buffer = []
+    end_prompt_pending = False
 
     i = 0
     while i < len(lines):
@@ -61,7 +112,11 @@ def compile_document(source: dict, template_text: str) -> str:
                 if match:
                     tag_name = match.group(1)
                     if tag_name == 'template':
-                        # Skip entire header comment
+                        i += 1
+                        continue
+                    if tag_name == 'end-prompt':
+                        # End of guidance — stop skipping
+                        skip_guidance = False
                         i += 1
                         continue
                     # Skip tag comments and start skipping guidance
@@ -88,6 +143,8 @@ def compile_document(source: dict, template_text: str) -> str:
                     tag_name = match.group(1)
                     if tag_name == 'template':
                         in_header_comment = True
+                    elif tag_name == 'end-prompt':
+                        end_prompt_pending = True
                     i += 1
                     continue
                 else:
@@ -109,7 +166,11 @@ def compile_document(source: dict, template_text: str) -> str:
         if in_tag_comment:
             if '-->' in stripped:
                 in_tag_comment = False
-                skip_guidance = True
+                if end_prompt_pending:
+                    skip_guidance = False
+                    end_prompt_pending = False
+                else:
+                    skip_guidance = True
             i += 1
             continue
 
@@ -149,29 +210,49 @@ def compile_document(source: dict, template_text: str) -> str:
 
 
 def _substitute_line(line: str, source: dict) -> Optional[str]:
-    """Substitute placeholders in a single line."""
+    """Substitute placeholders with context-aware rendering.
+
+    Context detection:
+    - Table (line starts with |): value only, no attribution
+    - Block (line is just {{placeholder}}): full response in blockquote
+    - Label/other: full response inline
+    """
     metadata = source.get("metadata", {})
+    stripped = line.strip()
+    is_table = stripped.startswith('|')
+    is_block = bool(re.match(r'^\s*\{\{\w+\}\}\s*$', stripped))
+    has_response_sub = False
 
     def replace_placeholder(m):
+        nonlocal has_response_sub
         ref_id = m.group(1)
 
-        # Check metadata first
         if ref_id in metadata:
             return str(metadata[ref_id])
 
-        # Check for special vars
         if ref_id == '_n':
-            return ''  # Will be handled in loop expansion
+            return ''
 
-        # Check responses
         entries = get_response_entries(source, ref_id)
         if entries:
-            return _render_response(ref_id, entries)
+            has_response_sub = True
+            if is_table:
+                # Tables: active value only (no trail, no attribution)
+                return entries[-1]['value']
+            else:
+                return _render_response(ref_id, entries)
 
-        # Leave empty for unfilled
         return ''
 
-    return re.sub(r'\{\{(\w+)\}\}', replace_placeholder, line)
+    result = re.sub(r'\{\{(\w+)\}\}', replace_placeholder, line)
+
+    # Block context: wrap in blockquote
+    if is_block and not is_table and has_response_sub:
+        content = result.strip()
+        if content:
+            result = '\n'.join(f"> {rl}" for rl in content.split('\n'))
+
+    return result
 
 
 def _render_response(prompt_id: str, entries: list) -> str:
@@ -200,6 +281,28 @@ def _render_response(prompt_id: str, entries: list) -> str:
             parts.append(f"~~{entry['value']}~~\n{attribution}")
 
     return '\n'.join(parts)
+
+
+def _render_value_only(entries: list) -> str:
+    """Render values with amendment trail (strikethrough), no attribution."""
+    if not entries:
+        return ''
+    if len(entries) == 1:
+        return entries[0]['value']
+    parts = []
+    for i, entry in enumerate(entries):
+        if i < len(entries) - 1:
+            parts.append(f"~~{entry['value']}~~")
+        else:
+            parts.append(entry['value'])
+    return '\n'.join(parts)
+
+
+def _render_attributions(entries: list) -> str:
+    """Render attribution lines for all response entries."""
+    if not entries:
+        return ''
+    return '\n'.join(_format_attribution(entry) for entry in entries)
 
 
 def _format_attribution(entry: dict) -> str:
@@ -249,7 +352,6 @@ def _expand_loops(text: str, source: dict) -> str:
         if iterations < 1:
             continue
 
-        # Find the step section pattern in the text and duplicate for iterations
         # Look for "### Step" followed by content until next "### Step" or "## "
         step_pattern = re.compile(
             r'(### Step\s*\n)(.*?)(?=### Step|\n## |\Z)',
@@ -258,30 +360,26 @@ def _expand_loops(text: str, source: dict) -> str:
 
         match = step_pattern.search(text)
         if match:
-            # We have one step block that should be expanded to N iterations
-            # But the responses are already iteration-indexed, so we need
-            # to generate N blocks, each with its own iteration's data
             step_blocks = []
             for n in range(1, iterations + 1):
                 block = f"### Step {n}\n\n"
-                # Find all prompts in this loop and render their iteration values
                 for base_id, iter_data in loop_prompts.items():
                     if n in iter_data:
                         entries = iter_data[n]
-                        rendered = _render_response(f"{base_id}.{n}", entries)
-                        # Add the rendered content with appropriate formatting
+                        value = _render_value_only(entries)
+                        attrs = _render_attributions(entries)
+
                         if base_id.startswith("step_instructions"):
-                            block += f"**{rendered}**\n\n"
+                            block += f"**{value}**\n{attrs}\n\n"
                         elif base_id.startswith("step_expected"):
-                            block += f"**Expected:** {rendered}\n\n"
+                            block += f"**Expected:** {value}\n{attrs}\n\n"
                         elif base_id.startswith("step_actual"):
-                            block += f"**Actual:**\n\n```\n{rendered}\n```\n\n"
+                            block += f"**Actual:**\n\n```\n{value}\n```\n{attrs}\n\n"
                         elif base_id.startswith("step_outcome"):
-                            block += f"**Outcome:** {rendered}\n\n"
+                            block += f"**Outcome:** {value}\n{attrs}\n\n"
 
                 step_blocks.append(block)
 
-            # Replace the single step block with all expanded blocks
             expanded = '\n'.join(step_blocks)
             text = step_pattern.sub(expanded, text, count=1)
 

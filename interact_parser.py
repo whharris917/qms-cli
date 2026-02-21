@@ -11,6 +11,7 @@ Tag vocabulary (REQ-INT-001):
     @gate: id | type: yesno | yes: id | no: id
     @loop: name
     @end-loop: name
+    @end-prompt                     (guidance boundary)
     @end
 
 Created as part of CR-091: Interaction System Engine
@@ -273,6 +274,12 @@ def parse_template(template_text: str) -> TemplateGraph:
             if str(loop_name) != current_loop:
                 raise ValueError(f"@end-loop '{loop_name}' does not match open @loop '{current_loop}'")
             current_loop = None
+
+        elif tag == 'end-prompt':
+            # Guidance boundary marker — no node created.
+            # Its position in tag_positions naturally limits guidance
+            # extraction for the preceding prompt/gate.
+            pass
 
         elif tag == 'end':
             # Terminal state — represented by a sentinel in the graph
