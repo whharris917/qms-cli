@@ -20,6 +20,8 @@ from qms_auth import get_current_user, check_permission, verify_user_identity
 from qms_meta import read_meta, write_meta, update_meta_checkout
 from qms_audit import log_checkout, log_withdraw
 from workflow import CHECKOUT_TRANSITIONS, WITHDRAW_TRANSITIONS
+from interact_source import create_source, load_source, save_session
+from interact_parser import parse_template
 
 
 def clear_workflow_tracking(meta: dict) -> dict:
@@ -130,7 +132,12 @@ def cmd_checkout(args) -> int:
         # Write content to workspace
         workspace_path = get_workspace_path(user, doc_id)
         workspace_path.parent.mkdir(parents=True, exist_ok=True)
-        write_document_minimal(workspace_path, frontmatter, body)
+
+        # CR-091 REQ-INT-017: Interactive checkout
+        if _is_interactive_doc(doc_id, doc_type):
+            _init_interactive_session(user, doc_id, doc_type, meta)
+        else:
+            write_document_minimal(workspace_path, frontmatter, body)
 
     elif effective_path.exists():
         # Create new draft from effective
@@ -162,7 +169,12 @@ def cmd_checkout(args) -> int:
         # Write content to workspace
         workspace_path = get_workspace_path(user, doc_id)
         workspace_path.parent.mkdir(parents=True, exist_ok=True)
-        write_document_minimal(workspace_path, frontmatter, body)
+
+        # CR-091 REQ-INT-017: Interactive checkout
+        if _is_interactive_doc(doc_id, doc_type):
+            _init_interactive_session(user, doc_id, doc_type, meta)
+        else:
+            write_document_minimal(workspace_path, frontmatter, body)
 
         print(f"Created draft v{new_version} from effective v{current_version}")
     else:
@@ -173,3 +185,72 @@ def cmd_checkout(args) -> int:
     print(f"Workspace: {workspace_path.relative_to(PROJECT_ROOT)}")
 
     return 0
+
+
+def _is_interactive_doc(doc_id: str, doc_type: str) -> bool:
+    """Check if a document should use interactive authoring."""
+    # Currently only VR documents are interactive
+    return doc_type == "VR"
+
+
+def _init_interactive_session(user: str, doc_id: str, doc_type: str, meta: dict) -> None:
+    """
+    Initialize an interactive session for checkout (REQ-INT-017).
+
+    Creates a .interact session file in the workspace. If a .source.json
+    exists from a previous checkin, seeds the session from it.
+    """
+    from qms_meta import get_meta_path
+    import re
+
+    # Load template
+    template_path = Path(__file__).parent.parent / "seed" / "templates" / f"TEMPLATE-{doc_type}.md"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Interactive template not found: TEMPLATE-{doc_type}")
+
+    template_text = template_path.read_text(encoding="utf-8")
+    graph = parse_template(template_text)
+
+    # Check for existing source file to resume
+    meta_dir = get_meta_path(doc_id, doc_type).parent
+    source_path = meta_dir / f"{doc_id}.source.json"
+    source = load_source(source_path)
+
+    if source is None:
+        # Create new source
+        # Extract parent_doc_id from doc_id pattern (e.g., CR-091-VR-001 -> CR-091)
+        parent_doc_id = ""
+        match = re.match(r"((?:CR|INV)-\d+(?:-VAR-\d+)?(?:-ADD-\d+)?)", doc_id)
+        if match:
+            # Remove the VR suffix to get parent
+            parent = doc_id.rsplit("-VR-", 1)[0] if "-VR-" in doc_id else ""
+            parent_doc_id = parent
+
+        source = create_source(
+            doc_id=doc_id,
+            template_name=graph.header.name,
+            template_version=graph.header.version,
+            start_prompt=graph.header.start,
+            metadata={
+                "parent_doc_id": parent_doc_id,
+                "vr_id": doc_id,
+                "title": meta.get("title", ""),
+            },
+        )
+        print(f"Interactive session initialized (new)")
+    else:
+        print(f"Interactive session resumed from source")
+
+    # Save session file
+    session_path = get_workspace_path(user, doc_id).parent / f"{doc_id}.interact"
+    save_session(source, session_path)
+
+    # Also create a placeholder workspace .md so existing workspace checks work
+    workspace_path = get_workspace_path(user, doc_id)
+    workspace_path.parent.mkdir(parents=True, exist_ok=True)
+    workspace_path.write_text(
+        f"# {doc_id}\n\nThis document is authored interactively.\n"
+        f"Use `qms interact {doc_id}` to author.\n"
+        f"Use `qms interact {doc_id} --compile` to preview.\n",
+        encoding="utf-8",
+    )

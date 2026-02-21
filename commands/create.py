@@ -20,6 +20,8 @@ from qms_auth import get_current_user, check_permission, verify_user_identity
 from qms_templates import load_template_for_type
 from qms_meta import create_initial_meta, write_meta
 from qms_audit import log_create
+from interact_parser import parse_template
+from interact_source import create_source, save_session
 
 
 @CommandRegistry.register(
@@ -199,7 +201,12 @@ Examples:
     # Copy to user's workspace
     workspace_path = get_workspace_path(user, doc_id)
     workspace_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(draft_path, workspace_path)
+
+    # CR-091: Initialize interactive session for VR documents
+    if doc_type == "VR":
+        _init_vr_interactive_session(user, doc_id, doc_type, parent_id, title, workspace_path)
+    else:
+        shutil.copy(draft_path, workspace_path)
 
     print(f"Created: {doc_id} (v{meta['version']}, {meta['status']})")
     print(f"Location: {draft_path.relative_to(PROJECT_ROOT)}")
@@ -208,3 +215,44 @@ Examples:
     print(f"Responsible User: {user}")
 
     return 0
+
+
+def _init_vr_interactive_session(user, doc_id, doc_type, parent_id, title, workspace_path):
+    """Initialize an interactive session for a newly created VR."""
+    template_path = Path(__file__).parent.parent / "seed" / "templates" / f"TEMPLATE-{doc_type}.md"
+    if not template_path.exists():
+        # Fall back to standard copy
+        shutil.copy(get_doc_path(doc_id, draft=True), workspace_path)
+        return
+
+    template_text = template_path.read_text(encoding="utf-8")
+    try:
+        graph = parse_template(template_text)
+    except ValueError:
+        # Template is not interactive — fall back
+        shutil.copy(get_doc_path(doc_id, draft=True), workspace_path)
+        return
+
+    source = create_source(
+        doc_id=doc_id,
+        template_name=graph.header.name,
+        template_version=graph.header.version,
+        start_prompt=graph.header.start,
+        metadata={
+            "parent_doc_id": parent_id or "",
+            "vr_id": doc_id,
+            "title": title,
+        },
+    )
+
+    # Save .interact session file
+    session_path = workspace_path.parent / f"{doc_id}.interact"
+    save_session(source, session_path)
+
+    # Create placeholder workspace .md
+    workspace_path.write_text(
+        f"# {doc_id}\n\nThis document is authored interactively.\n"
+        f"Use `qms interact {doc_id}` to author.\n"
+        f"Use `qms interact {doc_id} --compile` to preview.\n",
+        encoding="utf-8",
+    )

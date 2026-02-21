@@ -505,6 +505,76 @@ def register_tools(mcp, run_qms_command: Callable, resolve_identity: Callable):
         return result["output"]
 
     # =========================================================================
+    # REQ-INT-022 / REQ-MCP-007: Interactive Authoring Tool
+    # =========================================================================
+
+    @mcp.tool()
+    def qms_interact(
+        ctx: Context,
+        doc_id: str,
+        user: str,
+        respond: str = "",
+        file: str = "",
+        reason: str = "",
+        goto: str = "",
+        cancel_goto: bool = False,
+        reopen: str = "",
+        progress: bool = False,
+        compile: bool = False,
+    ) -> str:
+        """
+        Interactive document authoring via template-driven prompting.
+
+        Presents prompts from an interactive template, records responses,
+        and manages the authoring session. Bare invocation (no flags)
+        shows status and current prompt.
+
+        Args:
+            doc_id: Document identifier (e.g., "CR-091-VR-001")
+            user: QMS user identity
+            respond: Response value for the current prompt
+            file: Path to file containing response value
+            reason: Reason for amendment or loop reopen
+            goto: Navigate to a prompt for amendment
+            cancel_goto: Cancel active goto and return
+            reopen: Reopen a closed loop
+            progress: Show all prompts with fill status
+            compile: Preview compiled markdown output
+
+        Returns:
+            Current prompt info, response confirmation, or compiled output.
+
+        Requirement: REQ-INT-022
+        """
+        resolved = resolve_identity(ctx, user)
+        args = ["interact", doc_id]
+
+        if progress:
+            args.append("--progress")
+        elif compile:
+            args.append("--compile")
+        elif cancel_goto:
+            args.append("--cancel-goto")
+        elif goto:
+            args.extend(["--goto", goto])
+            if reason:
+                args.extend(["--reason", reason])
+        elif reopen:
+            args.extend(["--reopen", reopen])
+            if reason:
+                args.extend(["--reason", reason])
+        elif respond or file:
+            if file:
+                args.extend(["--respond", "--file", file])
+            else:
+                args.extend(["--respond", respond])
+            if reason:
+                args.extend(["--reason", reason])
+
+        result = run_qms_command(args, user=resolved)
+        return result["output"]
+
+    # =========================================================================
     # REQ-MCP-006: Administrative Tools
     # =========================================================================
 

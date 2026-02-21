@@ -34,3 +34,4 @@ from . import verify_migration
 from . import namespace
 from . import init
 from . import user
+from . import interact  # CR-091

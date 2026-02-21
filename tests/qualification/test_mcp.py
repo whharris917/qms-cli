@@ -172,7 +172,7 @@ def test_register_tools_creates_all_tools():
     for tool_name in expected_tools:
         assert tool_name in registered_tools, f"Tool {tool_name} should be registered"
 
-    assert len(registered_tools) == 20, f"Expected 20 tools, got {len(registered_tools)}"
+    assert len(registered_tools) == 21, f"Expected 21 tools, got {len(registered_tools)}"
 
 
 # ============================================================================
