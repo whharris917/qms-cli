@@ -68,7 +68,7 @@ To see your workspace: qms --user {user} workspace
     # CR-091 REQ-INT-018: Check for interactive session
     session_path = workspace_path.parent / f"{doc_id}.interact"
     if session_path.exists():
-        return _checkin_interactive(doc_id, user, doc_type, meta, session_path, workspace_path, draft_path, version)
+        return _checkin_interactive(doc_id, user, doc_type, meta, session_path, workspace_path, draft_path)
 
     # Read workspace version
     frontmatter, body = read_document(workspace_path)
@@ -111,7 +111,7 @@ To see your workspace: qms --user {user} workspace
     return 0
 
 
-def _checkin_interactive(doc_id, user, doc_type, meta, session_path, workspace_path, draft_path, version):
+def _checkin_interactive(doc_id, user, doc_type, meta, session_path, workspace_path, draft_path):
     """
     Check in an interactive document (REQ-INT-018).
 
