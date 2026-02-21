@@ -74,8 +74,15 @@ def compile_document(source: dict, template_text: str) -> str:
                     i += 1
                     continue
             else:
-                # Multi-line comment starts
+                # Multi-line comment starts — check this line AND next line for tag
                 match = re.search(r'<!--\s*@(\w[\w-]*)', comment_content)
+                if not match and i + 1 < len(lines):
+                    # Tag might be on the next line (e.g., <!--\n@template: ...)
+                    next_stripped = lines[i + 1].strip()
+                    if next_stripped.startswith('@'):
+                        tag_match = re.match(r'@(\w[\w-]*)', next_stripped)
+                        if tag_match:
+                            match = tag_match
                 if match:
                     in_tag_comment = True
                     tag_name = match.group(1)
@@ -239,7 +246,7 @@ def _expand_loops(text: str, source: dict) -> str:
     # For each loop in the source, check if we need to duplicate sections
     for loop_name, loop_data in source.get("loops", {}).items():
         iterations = loop_data.get("iterations", 0)
-        if iterations <= 1:
+        if iterations < 1:
             continue
 
         # Find the step section pattern in the text and duplicate for iterations

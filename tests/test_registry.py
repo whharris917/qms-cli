@@ -46,6 +46,7 @@ class TestCommandRegistry:
             "comments",
             "migrate",
             "verify-migration",
+            "interact",
         ]
 
         registered_commands = [spec.name for spec in CommandRegistry.get_all_commands()]
@@ -58,8 +59,8 @@ class TestCommandRegistry:
         from registry import CommandRegistry
         import commands  # noqa: F401 - triggers registration
 
-        assert CommandRegistry.command_count() == 21, \
-            f"Expected 21 commands, got {CommandRegistry.command_count()}"
+        assert CommandRegistry.command_count() == 22, \
+            f"Expected 22 commands, got {CommandRegistry.command_count()}"
 
     def test_get_command_returns_spec(self):
         """Verify get_command returns a CommandSpec."""

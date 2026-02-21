@@ -57,6 +57,12 @@ QMS_MODULES = [
     "commands.comments",
     "commands.migrate",
     "commands.verify_migration",
+    # CR-091 interaction system modules
+    "interact_parser",
+    "interact_source",
+    "interact_engine",
+    "interact_compiler",
+    "commands.interact",
 ]
 
 
