@@ -1,6 +1,6 @@
 ---
 title: Verification Record Template
-revision_summary: 'CR-091: Interactive VR template v3'
+revision_summary: 'CR-094: Add @end-prompt guidance boundaries, improve prompt guidance'
 ---
 
 <!--
@@ -20,7 +20,7 @@ instantiation. VRs are authored via `qms interact`, not freehand editing.
 -->
 
 <!--
-@template: VR | version: 3 | start: related_eis
+@template: VR | version: 4 | start: related_eis
 
 Schema Tag Reference
 ====================
@@ -30,6 +30,7 @@ Flow Tags:
   @gate: id | type: yesno | ...    Flow-control prompt. Routes only, no compiled content.
   @loop: name                      Repeating block start. {{_n}} = iteration counter.
   @end-loop: name                  Repeating block end.
+  @end-prompt                      Guidance boundary. Ends guidance text after a prompt/gate.
   @end                             Terminal state.
 
 Attributes:
@@ -67,7 +68,13 @@ revision_summary: 'Initial draft'
 
 Which execution item(s) in the parent document does this VR verify? (e.g., EI-3, or EI-3 and EI-4)
 
+<!-- @end-prompt -->
+
 <!-- @prompt: date | next: objective | default: today -->
+
+Date of this verification. Defaults to today.
+
+<!-- @end-prompt -->
 
 | Parent Document | Related EI(s) | Date |
 |-----------------|---------------|------|
@@ -84,6 +91,8 @@ State what CAPABILITY is being verified -- not what specific mechanism is being 
 Good: "Verify that service health monitoring detects running and stopped services correctly"
 Avoid: "Verify the health check endpoint returns 200"
 
+<!-- @end-prompt -->
+
 **Objective:** {{objective}}
 
 ---
@@ -95,6 +104,8 @@ Avoid: "Verify the health check endpoint returns 200"
 Describe the state of the system BEFORE verification begins. A person with terminal access but no knowledge of this project must be able to reproduce these conditions.
 
 Include as applicable: branch and commit checked out, services running (which, what ports), container state, non-default configuration, data state, relevant environment details (OS, Python version, etc.).
+
+<!-- @end-prompt -->
 
 {{pre_conditions}}
 
@@ -110,11 +121,15 @@ Include as applicable: branch and commit checked out, services running (which, w
 
 What are you about to do? Describe the action and provide the exact command, click target, or navigation path. Commands must be copy-pasteable -- not retyped or abbreviated.
 
+<!-- @end-prompt -->
+
 **{{step_instructions}}**
 
 <!-- @prompt: step_expected | next: step_actual -->
 
 What do you expect to observe? State this BEFORE executing -- not after. Good verification covers both sides: confirming what should be present and confirming what should be absent. A step might check that a service responds correctly, or that an error no longer appears, or that an unrelated subsystem remains unaffected. All of these are evidence.
+
+<!-- @end-prompt -->
 
 **Expected:** {{step_expected}}
 
@@ -123,6 +138,8 @@ What do you expect to observe? State this BEFORE executing -- not after. Good ve
 What did you observe? Reference primary evidence: paste actual terminal output, or attach raw output via --respond --file. Do not summarize or paraphrase. If the output is long, paste the relevant portion and note what was omitted.
 
 The commit hash recorded on this response pins the project state at the moment of observation. A verifier can checkout this commit to see the exact code, configuration, and any output files referenced below.
+
+<!-- @end-prompt -->
 
 **Actual:**
 
@@ -134,11 +151,15 @@ The commit hash recorded on this response pins the project state at the moment o
 
 Did the observed output match your expectation? Pass or Fail. If Fail, note the discrepancy.
 
+<!-- @end-prompt -->
+
 **Outcome:** {{step_outcome}}
 
 <!-- @gate: more_steps | type: yesno | yes: step_instructions | no: summary_outcome -->
 
 Do you have additional verification steps to record?
+
+<!-- @end-prompt -->
 
 <!-- @end-loop: steps -->
 
@@ -150,11 +171,15 @@ Do you have additional verification steps to record?
 
 Considering all steps above, what is the overall outcome? Pass if all steps passed and nothing unexpected was observed. Fail if any step failed or if unexpected behavior was discovered.
 
+<!-- @end-prompt -->
+
 **Overall Outcome:** {{summary_outcome}}
 
 <!-- @prompt: summary_narrative | next: performer -->
 
 Brief narrative overview of the verification: what was tested, the general approach, and any notable observations -- even if they don't affect the outcome. If any step failed, reference the discrepancy and any VAR created.
+
+<!-- @end-prompt -->
 
 {{summary_narrative}}
 
@@ -166,7 +191,13 @@ Brief narrative overview of the verification: what was tested, the general appro
 
 Who performed this verification?
 
+<!-- @end-prompt -->
+
 <!-- @prompt: performed_date | next: end | default: today -->
+
+Date verification was performed. Defaults to today.
+
+<!-- @end-prompt -->
 
 | Role | Identity | Date |
 |------|----------|------|

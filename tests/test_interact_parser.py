@@ -269,7 +269,7 @@ class TestTemplateHeader:
             text = template_path.read_text(encoding="utf-8")
             graph = parse_template(text)
             assert graph.header.name == "VR"
-            assert graph.header.version == 3
+            assert graph.header.version == 4
             assert graph.header.start == "related_eis"
 
 
@@ -461,7 +461,7 @@ class TestRealTemplateVR:
     def test_vr_has_correct_header(self, vr_graph):
         """VR template has correct header metadata."""
         assert vr_graph.header.name == "VR"
-        assert vr_graph.header.version == 3
+        assert vr_graph.header.version == 4
         assert vr_graph.header.start == "related_eis"
 
     def test_vr_has_expected_prompts(self, vr_graph):
@@ -519,3 +519,156 @@ class TestAttributeParsing:
     def test_integer_coercion(self):
         attrs = _parse_attributes("x | version: 3")
         assert attrs["version"] == 3
+
+
+# =============================================================================
+# CR-094 D3: @end-prompt guidance boundaries (parser side)
+# =============================================================================
+
+ENDPROMPT_TEMPLATE = """\
+---
+title: Test
+---
+
+<!-- @template: EP | version: 1 | start: p1 -->
+
+<!-- @prompt: p1 | next: p2 -->
+
+This is guidance for p1.
+
+<!-- @end-prompt -->
+
+**Label:** {{p1}}
+
+---
+
+## Section 2
+
+<!-- @prompt: p2 | next: end -->
+
+Guidance for p2.
+
+<!-- @end-prompt -->
+
+{{p2}}
+
+<!-- @end -->
+"""
+
+NO_ENDPROMPT_TEMPLATE = """\
+---
+title: Test
+---
+
+<!-- @template: NEP | version: 1 | start: p1 -->
+
+<!-- @prompt: p1 | next: p2 -->
+
+Guidance for p1.
+
+**Label:** {{p1}}
+
+<!-- @prompt: p2 | next: end -->
+
+Guidance for p2.
+
+{{p2}}
+
+<!-- @end -->
+"""
+
+
+class TestEndPromptParser:
+    """CR-094 D3: @end-prompt tag recognition and guidance boundary."""
+
+    def test_end_prompt_recognized_as_tag(self):
+        """Parser recognizes @end-prompt without creating a node."""
+        graph = parse_template(ENDPROMPT_TEMPLATE)
+        # @end-prompt should NOT create a node
+        assert "end-prompt" not in graph.nodes
+        # But the template should still parse successfully
+        assert graph.header.name == "EP"
+
+    def test_guidance_stops_at_end_prompt(self):
+        """Guidance extraction stops at @end-prompt boundary."""
+        graph = parse_template(ENDPROMPT_TEMPLATE)
+        # p1 guidance should contain only text before @end-prompt
+        assert "This is guidance for p1" in graph.nodes["p1"].guidance
+        # Scaffold after @end-prompt should NOT be in guidance
+        assert "**Label:**" not in graph.nodes["p1"].guidance
+        assert "Section 2" not in graph.nodes["p1"].guidance
+
+    def test_guidance_without_end_prompt_includes_scaffold(self):
+        """Without @end-prompt, guidance extends to next tag (fallback)."""
+        graph = parse_template(NO_ENDPROMPT_TEMPLATE)
+        # p1 guidance goes all the way to next @prompt
+        # It will include **Label:** because there's no @end-prompt boundary
+        assert "Guidance for p1" in graph.nodes["p1"].guidance
+        assert "**Label:**" in graph.nodes["p1"].guidance
+
+    def test_end_prompt_with_gate(self):
+        """@end-prompt works with @gate tags too."""
+        template = """\
+---
+title: Test
+---
+
+<!-- @template: G | version: 1 | start: g1 -->
+
+<!-- @gate: g1 | type: yesno | yes: p1 | no: p2 -->
+
+Gate guidance here.
+
+<!-- @end-prompt -->
+
+Document scaffold.
+
+<!-- @prompt: p1 | next: end -->
+
+P1 guidance.
+
+<!-- @end-prompt -->
+
+{{p1}}
+
+<!-- @prompt: p2 | next: end -->
+
+P2 guidance.
+
+<!-- @end-prompt -->
+
+{{p2}}
+
+<!-- @end -->
+"""
+        graph = parse_template(template)
+        assert "Gate guidance here" in graph.nodes["g1"].guidance
+        assert "Document scaffold" not in graph.nodes["g1"].guidance
+
+    def test_end_prompt_stripped_from_vr_template(self):
+        """Real TEMPLATE-VR guidance is bounded by @end-prompt."""
+        template_path = QMS_CLI_DIR / "seed" / "templates" / "TEMPLATE-VR.md"
+        if not template_path.exists():
+            pytest.skip("TEMPLATE-VR.md not found")
+        text = template_path.read_text(encoding="utf-8")
+        graph = parse_template(text)
+        # objective guidance should contain guidance text
+        obj = graph.nodes["objective"]
+        assert "CAPABILITY" in obj.guidance
+        # But NOT the label scaffold
+        assert "**Objective:**" not in obj.guidance
+
+    def test_all_vr_prompts_have_guidance(self):
+        """All VR prompts have non-empty guidance (after adding @end-prompt)."""
+        template_path = QMS_CLI_DIR / "seed" / "templates" / "TEMPLATE-VR.md"
+        if not template_path.exists():
+            pytest.skip("TEMPLATE-VR.md not found")
+        text = template_path.read_text(encoding="utf-8")
+        graph = parse_template(text)
+        for nid, node in graph.nodes.items():
+            if nid == "__end__":
+                continue
+            if isinstance(node, PromptNode):
+                assert node.guidance.strip(), f"Prompt {nid} has empty guidance"
+            elif isinstance(node, GateNode):
+                assert node.guidance.strip(), f"Gate {nid} has empty guidance"
