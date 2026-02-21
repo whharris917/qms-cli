@@ -181,6 +181,18 @@ Valid users:
     p_namespace.add_argument("action", nargs="?", default="list", help="Action: list, add")
     p_namespace.add_argument("name", nargs="?", help="Namespace name (for add)")
 
+    # interact (CR-091)
+    p_interact = subparsers.add_parser("interact", help="Interactive document authoring")
+    p_interact.add_argument("doc_id", help="Document ID")
+    p_interact.add_argument("--respond", nargs="?", const="", default=None, help="Response value")
+    p_interact.add_argument("--file", help="Read response from file")
+    p_interact.add_argument("--reason", help="Reason for amendment or loop reopen")
+    p_interact.add_argument("--goto", help="Navigate to a prompt for amendment")
+    p_interact.add_argument("--cancel-goto", action="store_true", help="Cancel goto and return")
+    p_interact.add_argument("--reopen", help="Reopen a closed loop")
+    p_interact.add_argument("--progress", action="store_true", help="Show progress")
+    p_interact.add_argument("--compile", action="store_true", help="Preview compiled output")
+
     # init (CR-036)
     p_init = subparsers.add_parser("init", help="Initialize a new QMS project")
     p_init.add_argument("--root", help="Project root directory (default: current directory)")
