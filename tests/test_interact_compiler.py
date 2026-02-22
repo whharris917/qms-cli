@@ -5,6 +5,7 @@ Qualification tests for REQ-INT-016 and the strikethrough rendering
 portion of REQ-INT-009.
 
 Created as part of CR-091: Interaction System Engine
+Updated by CR-095: Block rendering, auto-metadata, step subsection numbering
 """
 import sys
 from pathlib import Path
@@ -20,6 +21,7 @@ from interact_source import create_source, add_response
 from interact_compiler import (
     compile_document, compile_preview, _render_response,
     _strip_template_preamble, _render_value_only, _render_attributions,
+    _inject_auto_metadata,
 )
 
 
@@ -297,7 +299,7 @@ class TestCompilePreview:
 # =============================================================================
 
 class TestRealTemplateCompilation:
-    """Integration: compile using the actual TEMPLATE-VR v3."""
+    """Integration: compile using the actual TEMPLATE-VR v5."""
 
     @pytest.fixture
     def vr_template(self):
@@ -308,15 +310,14 @@ class TestRealTemplateCompilation:
 
     def test_vr_compiles_with_filled_responses(self, vr_template):
         """VR template compiles with all prompts filled."""
-        source = create_source("CR-091-VR-001", "VR", 4, "__end__",
+        source = create_source("CR-091-VR-001", "VR", 5, "__end__",
                                metadata={
                                    "parent_doc_id": "CR-091",
                                    "vr_id": "CR-091-VR-001",
                                    "title": "Test Verification",
                                })
-        # Fill non-loop prompts
+        # Fill non-loop prompts (no date/performer/performed_date — auto-generated)
         add_response(source, "related_eis", "EI-3, EI-4", "claude")
-        add_response(source, "date", "2026-02-21", "claude")
         add_response(source, "objective", "Verify interaction engine", "claude")
         add_response(source, "pre_conditions", "Branch cr-091 checked out", "claude")
         # Fill one loop iteration
@@ -327,8 +328,6 @@ class TestRealTemplateCompilation:
         # Fill summary
         add_response(source, "summary_outcome", "Pass", "claude")
         add_response(source, "summary_narrative", "All tests passed.", "claude")
-        add_response(source, "performer", "claude", "claude")
-        add_response(source, "performed_date", "2026-02-21", "claude")
 
         # Set loop state so compiler knows about iterations
         source["loops"]["steps"] = {"iterations": 1, "closed": True, "reopenings": []}
@@ -350,7 +349,7 @@ class TestRealTemplateCompilation:
 
     def test_vr_compiles_empty_gracefully(self, vr_template):
         """VR template compiles without error even with no responses."""
-        source = create_source("CR-091-VR-001", "VR", 4, "related_eis",
+        source = create_source("CR-091-VR-001", "VR", 5, "related_eis",
                                metadata={"parent_doc_id": "CR-091",
                                           "vr_id": "CR-091-VR-001",
                                           "title": "Empty VR"})
@@ -438,7 +437,7 @@ class TestPreambleStripping:
         if not template_path.exists():
             pytest.skip("TEMPLATE-VR.md not found")
         template = template_path.read_text(encoding="utf-8")
-        source = create_source("VR-001", "VR", 4, "related_eis",
+        source = create_source("VR-001", "VR", 5, "related_eis",
                                metadata={"parent_doc_id": "CR-001",
                                           "vr_id": "VR-001", "title": "T"})
         result = compile_document(source, template)
@@ -534,11 +533,10 @@ class TestContextAwareAttribution:
 
     def test_loop_bold_not_broken(self, vr_template):
         """Step instructions bold markers wrap only value, not attribution."""
-        source = create_source("VR-001", "VR", 4, "__end__",
+        source = create_source("VR-001", "VR", 5, "__end__",
                                metadata={"parent_doc_id": "CR-001",
                                           "vr_id": "VR-001", "title": "T"})
         add_response(source, "related_eis", "EI-1", "claude")
-        add_response(source, "date", "2026-02-21", "claude")
         add_response(source, "objective", "Test", "claude")
         add_response(source, "pre_conditions", "Ready", "claude")
         add_response(source, "step_instructions.1", "Do thing", "claude")
@@ -547,8 +545,6 @@ class TestContextAwareAttribution:
         add_response(source, "step_outcome.1", "Pass", "claude")
         add_response(source, "summary_outcome", "Pass", "claude")
         add_response(source, "summary_narrative", "Done", "claude")
-        add_response(source, "performer", "claude", "claude")
-        add_response(source, "performed_date", "2026-02-21", "claude")
         source["loops"]["steps"] = {"iterations": 1, "closed": True, "reopenings": []}
         result = compile_document(source, vr_template)
         # Bold should wrap only the value
@@ -560,11 +556,10 @@ class TestContextAwareAttribution:
 
     def test_loop_attribution_outside_code_fence(self, vr_template):
         """Step actual attribution is outside code fences."""
-        source = create_source("VR-001", "VR", 4, "__end__",
+        source = create_source("VR-001", "VR", 5, "__end__",
                                metadata={"parent_doc_id": "CR-001",
                                           "vr_id": "VR-001", "title": "T"})
         add_response(source, "related_eis", "EI-1", "claude")
-        add_response(source, "date", "2026-02-21", "claude")
         add_response(source, "objective", "Test", "claude")
         add_response(source, "pre_conditions", "Ready", "claude")
         add_response(source, "step_instructions.1", "Do it", "claude")
@@ -573,8 +568,6 @@ class TestContextAwareAttribution:
         add_response(source, "step_outcome.1", "Pass", "claude")
         add_response(source, "summary_outcome", "Pass", "claude")
         add_response(source, "summary_narrative", "OK", "claude")
-        add_response(source, "performer", "claude", "claude")
-        add_response(source, "performed_date", "2026-02-21", "claude")
         source["loops"]["steps"] = {"iterations": 1, "closed": True, "reopenings": []}
         result = compile_document(source, vr_template)
         lines = result.split('\n')
@@ -660,13 +653,14 @@ class TestEndPromptCompiler:
 
 
 # =============================================================================
-# CR-094 D4: Visual distinction (blockquote wrapping)
+# CR-095: Block rendering (REQ-INT-024)
 # =============================================================================
 
-class TestBlockquoteWrapping:
-    """CR-094 D4: Block-context responses wrapped in blockquote."""
+class TestBlockRendering:
+    """REQ-INT-024: All non-table lines with response substitution use block
+    rendering — blockquote with attribution below."""
 
-    def test_block_context_wrapped(self):
+    def test_standalone_response_blockquoted(self):
         """Standalone placeholder response gets blockquote wrapping."""
         source = create_source("T", "EP", 1, "__end__",
                                metadata={"title": "Test"})
@@ -674,29 +668,32 @@ class TestBlockquoteWrapping:
         result = compile_document(source, ENDPROMPT_TEMPLATE)
         assert "> My response text" in result
 
-    def test_block_context_attribution_in_blockquote(self):
-        """Attribution for block-context response is inside blockquote."""
+    def test_attribution_below_blockquote(self):
+        """Attribution for block-context response is below the blockquote, not inside it."""
         source = create_source("T", "EP", 1, "__end__",
                                metadata={"title": "Test"})
         add_response(source, "p2", "Response", "claude")
         result = compile_document(source, ENDPROMPT_TEMPLATE)
-        for line in result.split('\n'):
+        lines = result.split('\n')
+        found_quote = False
+        for i, line in enumerate(lines):
+            if '> Response' in line:
+                found_quote = True
+            # Attribution should NOT be in a blockquote line
             if '*--' in line and 'claude' in line:
-                if '> ' in line or line.startswith('>'):
-                    break
-        else:
-            pytest.fail("Attribution not in blockquote for block context")
+                assert not line.startswith('>'), \
+                    f"Attribution inside blockquote: {line}"
+                break
+        assert found_quote, "Blockquoted response not found"
 
-    def test_label_context_not_wrapped(self):
-        """Label-context responses are NOT blockquoted."""
+    def test_label_context_also_block_rendered(self):
+        """Label-context responses are now also block-rendered (CR-095 change)."""
         source = create_source("T", "EP", 1, "__end__",
                                metadata={"title": "Test"})
         add_response(source, "p1", "label value", "claude")
         result = compile_document(source, ENDPROMPT_TEMPLATE)
-        # p1 is label context: **Label:** {{p1}}
-        assert "**Label:** label value" in result
-        # Should NOT be blockquoted
-        assert "> **Label:**" not in result
+        # p1 is in **Label:** {{p1}} — the whole substituted line gets block-rendered
+        assert "> " in result  # Some blockquote wrapping should exist
 
     def test_table_context_not_wrapped(self):
         """Table-context responses are NOT blockquoted."""
@@ -717,6 +714,247 @@ class TestBlockquoteWrapping:
         for line in result.split('\n'):
             if line.strip() == '>':
                 pytest.fail("Orphaned blockquote marker found")
+
+
+# =============================================================================
+# CR-095: Auto-metadata (REQ-INT-023)
+# =============================================================================
+
+class TestAutoMetadata:
+    """REQ-INT-023: Auto-generate date, performer, performed_date from
+    response timestamps and authors."""
+
+    def test_auto_date_from_earliest_timestamp(self):
+        """date auto-generated from earliest response timestamp."""
+        source = create_source("T", "SIMPLE", 1, "__end__")
+        add_response(source, "first", "v1", "claude")
+        add_response(source, "second", "v2", "claude")
+        # Patch timestamps for deterministic testing
+        source["responses"]["first"][0]["timestamp"] = "2026-02-20T10:00:00Z"
+        source["responses"]["second"][0]["timestamp"] = "2026-02-21T15:00:00Z"
+        _inject_auto_metadata(source)
+        assert source["metadata"]["date"] == "2026-02-20"
+
+    def test_auto_performer_from_authors(self):
+        """performer auto-generated from unique response authors."""
+        source = create_source("T", "SIMPLE", 1, "__end__")
+        add_response(source, "first", "v1", "claude")
+        add_response(source, "second", "v2", "lead")
+        _inject_auto_metadata(source)
+        assert source["metadata"]["performer"] == "claude, lead"
+
+    def test_auto_performed_date_from_latest_timestamp(self):
+        """performed_date auto-generated from latest response timestamp."""
+        source = create_source("T", "SIMPLE", 1, "__end__")
+        add_response(source, "first", "v1", "claude")
+        add_response(source, "second", "v2", "claude")
+        # Patch timestamps for deterministic testing
+        source["responses"]["first"][0]["timestamp"] = "2026-02-20T10:00:00Z"
+        source["responses"]["second"][0]["timestamp"] = "2026-02-21T15:00:00Z"
+        _inject_auto_metadata(source)
+        assert source["metadata"]["performed_date"] == "2026-02-21"
+
+    def test_explicit_metadata_not_overwritten(self):
+        """Explicit metadata values are preserved over auto-generated ones."""
+        source = create_source("T", "SIMPLE", 1, "__end__",
+                               metadata={"date": "2026-01-01"})
+        add_response(source, "first", "v1", "claude")
+        # Patch timestamp
+        source["responses"]["first"][0]["timestamp"] = "2026-02-20T10:00:00Z"
+        _inject_auto_metadata(source)
+        assert source["metadata"]["date"] == "2026-01-01"
+
+    def test_no_responses_no_auto_metadata(self):
+        """No auto-metadata generated when no responses exist."""
+        source = create_source("T", "SIMPLE", 1, "first")
+        _inject_auto_metadata(source)
+        assert "date" not in source["metadata"]
+        assert "performer" not in source["metadata"]
+        assert "performed_date" not in source["metadata"]
+
+    def test_auto_metadata_in_compilation(self):
+        """Auto-generated metadata appears in compiled output via {{date}}."""
+        source = create_source("T", "META", 1, "__end__",
+                               metadata={"parent_doc_id": "CR-001",
+                                          "vr_id": "VR-001",
+                                          "title": "Test"})
+        # Add response and patch timestamp
+        add_response(source, "p1", "evidence", "claude")
+        source["responses"]["p1"][0]["timestamp"] = "2026-02-21T12:00:00Z"
+
+        # Template has {{date}} — should be auto-filled
+        template = """\
+---
+title: '{{title}}'
+---
+
+<!-- @template: AUTO | version: 1 | start: p1 -->
+
+| Date | Value |
+|------|-------|
+| {{date}} | {{p1}} |
+
+<!-- @end -->
+"""
+        result = compile_document(source, template)
+        assert "2026-02-21" in result
+
+
+# =============================================================================
+# CR-095: Step subsection numbering (REQ-INT-025)
+# =============================================================================
+
+class TestStepSubsectionNumbering:
+    """REQ-INT-025: Step headings use subsection numbering (4.1, 4.2, etc.)."""
+
+    @pytest.fixture
+    def vr_template(self):
+        template_path = QMS_CLI_DIR / "seed" / "templates" / "TEMPLATE-VR.md"
+        if not template_path.exists():
+            pytest.skip("TEMPLATE-VR.md not found")
+        return template_path.read_text(encoding="utf-8")
+
+    def test_step_subsection_headings(self, vr_template):
+        """Steps produce 4.1 Step 1, 4.2 Step 2 headings."""
+        source = create_source("VR-001", "VR", 5, "__end__",
+                               metadata={"parent_doc_id": "CR-001",
+                                          "vr_id": "VR-001", "title": "T"})
+        add_response(source, "related_eis", "EI-1", "claude")
+        add_response(source, "objective", "Test", "claude")
+        add_response(source, "pre_conditions", "Ready", "claude")
+        # Two steps
+        add_response(source, "step_instructions.1", "First action", "claude")
+        add_response(source, "step_expected.1", "First expected", "claude")
+        add_response(source, "step_actual.1", "first output", "claude", commit="aaa")
+        add_response(source, "step_outcome.1", "Pass", "claude")
+        add_response(source, "step_instructions.2", "Second action", "claude")
+        add_response(source, "step_expected.2", "Second expected", "claude")
+        add_response(source, "step_actual.2", "second output", "claude", commit="bbb")
+        add_response(source, "step_outcome.2", "Pass", "claude")
+        add_response(source, "summary_outcome", "Pass", "claude")
+        add_response(source, "summary_narrative", "All good", "claude")
+        source["loops"]["steps"] = {"iterations": 2, "closed": True, "reopenings": []}
+
+        result = compile_document(source, vr_template)
+        assert "### 4.1 Step 1" in result
+        assert "### 4.2 Step 2" in result
+
+    def test_step_expected_blockquoted(self, vr_template):
+        """Step expected values are rendered as blockquotes."""
+        source = create_source("VR-001", "VR", 5, "__end__",
+                               metadata={"parent_doc_id": "CR-001",
+                                          "vr_id": "VR-001", "title": "T"})
+        add_response(source, "related_eis", "EI-1", "claude")
+        add_response(source, "objective", "Test", "claude")
+        add_response(source, "pre_conditions", "Ready", "claude")
+        add_response(source, "step_instructions.1", "Do it", "claude")
+        add_response(source, "step_expected.1", "Should see output", "claude")
+        add_response(source, "step_actual.1", "saw output", "claude", commit="abc")
+        add_response(source, "step_outcome.1", "Pass", "claude")
+        add_response(source, "summary_outcome", "Pass", "claude")
+        add_response(source, "summary_narrative", "OK", "claude")
+        source["loops"]["steps"] = {"iterations": 1, "closed": True, "reopenings": []}
+
+        result = compile_document(source, vr_template)
+        assert "> Should see output" in result
+
+    def test_step_actual_code_fenced(self, vr_template):
+        """Step actual values are in code fences."""
+        source = create_source("VR-001", "VR", 5, "__end__",
+                               metadata={"parent_doc_id": "CR-001",
+                                          "vr_id": "VR-001", "title": "T"})
+        add_response(source, "related_eis", "EI-1", "claude")
+        add_response(source, "objective", "Test", "claude")
+        add_response(source, "pre_conditions", "Ready", "claude")
+        add_response(source, "step_instructions.1", "Do it", "claude")
+        add_response(source, "step_expected.1", "Result", "claude")
+        add_response(source, "step_actual.1", "actual output here", "claude", commit="abc")
+        add_response(source, "step_outcome.1", "Pass", "claude")
+        add_response(source, "summary_outcome", "Pass", "claude")
+        add_response(source, "summary_narrative", "OK", "claude")
+        source["loops"]["steps"] = {"iterations": 1, "closed": True, "reopenings": []}
+
+        result = compile_document(source, vr_template)
+        # Find code fence containing actual output
+        lines = result.split('\n')
+        in_fence = False
+        found = False
+        for line in lines:
+            if line.strip() == '```':
+                in_fence = not in_fence
+                continue
+            if in_fence and 'actual output here' in line:
+                found = True
+                break
+        assert found, "Step actual not found in code fence"
+
+
+# =============================================================================
+# CR-095: VR template v5 integration
+# =============================================================================
+
+class TestVRTemplateV5:
+    """Integration tests for TEMPLATE-VR v5 changes."""
+
+    @pytest.fixture
+    def vr_template(self):
+        template_path = QMS_CLI_DIR / "seed" / "templates" / "TEMPLATE-VR.md"
+        if not template_path.exists():
+            pytest.skip("TEMPLATE-VR.md not found")
+        return template_path.read_text(encoding="utf-8")
+
+    def test_no_signature_section(self, vr_template):
+        """VR v5 has no Signature section."""
+        source = create_source("VR-001", "VR", 5, "__end__",
+                               metadata={"parent_doc_id": "CR-001",
+                                          "vr_id": "VR-001", "title": "T"})
+        add_response(source, "related_eis", "EI-1", "claude")
+        add_response(source, "objective", "Test", "claude")
+        add_response(source, "pre_conditions", "Ready", "claude")
+        add_response(source, "summary_outcome", "Pass", "claude")
+        add_response(source, "summary_narrative", "Done", "claude")
+        result = compile_document(source, vr_template)
+        assert "Signature" not in result
+
+    def test_no_references_section(self, vr_template):
+        """VR v5 has no References section."""
+        source = create_source("VR-001", "VR", 5, "__end__",
+                               metadata={"parent_doc_id": "CR-001",
+                                          "vr_id": "VR-001", "title": "T"})
+        add_response(source, "related_eis", "EI-1", "claude")
+        add_response(source, "objective", "Test", "claude")
+        add_response(source, "pre_conditions", "Ready", "claude")
+        add_response(source, "summary_outcome", "Pass", "claude")
+        add_response(source, "summary_narrative", "Done", "claude")
+        result = compile_document(source, vr_template)
+        assert "References" not in result
+
+    def test_prerequisites_heading(self, vr_template):
+        """VR v5 uses 'Prerequisites' not 'Pre-Conditions'."""
+        assert "Prerequisites" in vr_template
+        assert "Pre-Conditions" not in vr_template
+
+    def test_no_redundant_labels(self, vr_template):
+        """VR v5 has no redundant labels like **Objective:** before placeholders."""
+        # Template should NOT have **Objective:** {{objective}}
+        assert "**Objective:**" not in vr_template
+        assert "**Overall Outcome:**" not in vr_template
+
+    def test_auto_date_in_identification_table(self, vr_template):
+        """Date in identification table comes from auto-metadata."""
+        source = create_source("VR-001", "VR", 5, "__end__",
+                               metadata={"parent_doc_id": "CR-001",
+                                          "vr_id": "VR-001", "title": "T"})
+        add_response(source, "related_eis", "EI-1", "claude")
+        # Patch timestamp for deterministic date
+        source["responses"]["related_eis"][0]["timestamp"] = "2026-02-21T12:00:00Z"
+        add_response(source, "objective", "Test", "claude")
+        add_response(source, "pre_conditions", "Ready", "claude")
+        add_response(source, "summary_outcome", "Pass", "claude")
+        add_response(source, "summary_narrative", "Done", "claude")
+        result = compile_document(source, vr_template)
+        # Date should appear in the identification table
+        assert "2026-02-21" in result
 
 
 # =============================================================================

@@ -1,6 +1,6 @@
 ---
 title: Verification Record Template
-revision_summary: 'CR-094: Add @end-prompt guidance boundaries, improve prompt guidance'
+revision_summary: 'CR-095: Remove redundant prompts/sections, strip labels, subsection headings'
 ---
 
 <!--
@@ -20,7 +20,7 @@ instantiation. VRs are authored via `qms interact`, not freehand editing.
 -->
 
 <!--
-@template: VR | version: 4 | start: related_eis
+@template: VR | version: 5 | start: related_eis
 
 Schema Tag Reference
 ====================
@@ -64,15 +64,9 @@ revision_summary: 'Initial draft'
 
 ## 1. Verification Identification
 
-<!-- @prompt: related_eis | next: date -->
+<!-- @prompt: related_eis | next: objective -->
 
 Which execution item(s) in the parent document does this VR verify? (e.g., EI-3, or EI-3 and EI-4)
-
-<!-- @end-prompt -->
-
-<!-- @prompt: date | next: objective | default: today -->
-
-Date of this verification. Defaults to today.
 
 <!-- @end-prompt -->
 
@@ -93,11 +87,11 @@ Avoid: "Verify the health check endpoint returns 200"
 
 <!-- @end-prompt -->
 
-**Objective:** {{objective}}
+{{objective}}
 
 ---
 
-## 3. Pre-Conditions
+## 3. Prerequisites
 
 <!-- @prompt: pre_conditions | next: step_instructions -->
 
@@ -115,7 +109,7 @@ Include as applicable: branch and commit checked out, services running (which, w
 
 <!-- @loop: steps -->
 
-### Step {{_n}}
+### 4.{{_n}} Step {{_n}}
 
 <!-- @prompt: step_instructions | next: step_expected -->
 
@@ -131,7 +125,7 @@ What do you expect to observe? State this BEFORE executing -- not after. Good ve
 
 <!-- @end-prompt -->
 
-**Expected:** {{step_expected}}
+{{step_expected}}
 
 <!-- @prompt: step_actual | next: step_outcome | commit: true -->
 
@@ -140,8 +134,6 @@ What did you observe? Reference primary evidence: paste actual terminal output, 
 The commit hash recorded on this response pins the project state at the moment of observation. A verifier can checkout this commit to see the exact code, configuration, and any output files referenced below.
 
 <!-- @end-prompt -->
-
-**Actual:**
 
 ```
 {{step_actual}}
@@ -153,7 +145,7 @@ Did the observed output match your expectation? Pass or Fail. If Fail, note the 
 
 <!-- @end-prompt -->
 
-**Outcome:** {{step_outcome}}
+{{step_outcome}}
 
 <!-- @gate: more_steps | type: yesno | yes: step_instructions | no: summary_outcome -->
 
@@ -173,9 +165,9 @@ Considering all steps above, what is the overall outcome? Pass if all steps pass
 
 <!-- @end-prompt -->
 
-**Overall Outcome:** {{summary_outcome}}
+{{summary_outcome}}
 
-<!-- @prompt: summary_narrative | next: performer -->
+<!-- @prompt: summary_narrative | next: end -->
 
 Brief narrative overview of the verification: what was tested, the general approach, and any notable observations -- even if they don't affect the outcome. If any step failed, reference the discrepancy and any VAR created.
 
@@ -183,34 +175,7 @@ Brief narrative overview of the verification: what was tested, the general appro
 
 {{summary_narrative}}
 
----
-
-## 6. Signature
-
-<!-- @prompt: performer | next: performed_date | default: current_user -->
-
-Who performed this verification?
-
-<!-- @end-prompt -->
-
-<!-- @prompt: performed_date | next: end | default: today -->
-
-Date verification was performed. Defaults to today.
-
-<!-- @end-prompt -->
-
-| Role | Identity | Date |
-|------|----------|------|
-| Performed By | {{performer}} | {{performed_date}} |
-
 <!-- @end -->
-
----
-
-## 7. References
-
-- **{{parent_doc_id}}:** Parent document
-- **SOP-004:** Document Execution
 
 ---
 

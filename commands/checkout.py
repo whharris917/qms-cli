@@ -61,6 +61,11 @@ def cmd_checkout(args) -> int:
     meta = read_meta(doc_id, doc_type) or {}
     current_status = meta.get("status", "DRAFT")
 
+    # REQ-DOC-019: Terminal state checkout guard
+    if current_status in ("CLOSED", "RETIRED"):
+        print(f"Error: {doc_id} is {current_status} and cannot be checked out.")
+        return 1
+
     if draft_path.exists():
         # REQ-WF-022: Auto-withdraw from active workflow states
         status_enum = Status(current_status)
