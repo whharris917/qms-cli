@@ -1,6 +1,7 @@
 ---
 title: Change Record Template
-revision_summary: 'CR-098: Add VR column and TEMPLATE CR PATTERNS section (align with QMS per INV-013)'
+revision_summary: 'CR-100: Replace vague development location language, add SOP-005
+  workflow reference for seed changes, add PR enforcement language (INV-014 CAPA-004)'
 ---
 
 <!--
@@ -100,7 +101,7 @@ Templates exist in two locations that must stay aligned:
 When a CR modifies any template:
 - Changes must be propagated to BOTH locations
 - QMS copy: checkout via QMS CLI, edit, checkin
-- Seed copy: commit in qms-cli submodule, update submodule pointer
+- Seed copy: follow the SOP-005 Section 7.1 execution branch workflow — develop in .test-env/, create execution branch, run CI, merge via PR, then update submodule pointer in parent repo
 - Include an alignment verification EI in the implementation plan to confirm
   both copies match after changes are applied
 - QA will verify template alignment during post-review (SOP-002 Section 7.3)
@@ -201,7 +202,7 @@ Delete this section for document-only CRs.
 
 This CR implements changes to {{SYSTEM}}, a controlled {{submodule/codebase}}. Development follows established controls:
 
-1. **Test environment isolation:** Development in a non-QMS-controlled directory (e.g., `.test-env/`, `/projects/` for containerized agents, or other gitignored location)
+1. **Test environment isolation:** Development in `.test-env/` (local) or `/projects/` (containerized agents). No other locations are permitted.
 2. **Branch isolation:** All development on branch `{{BRANCH_NAME}}`
 3. **Write protection:** `.claude/settings.local.json` blocks direct writes to `{{SYSTEM}}/`
 4. **Qualification required:** All new/modified requirements must have passing tests before merge
@@ -269,7 +270,7 @@ For document-only CRs, simplify to relevant steps.
 Include for code CRs. Delete for document-only CRs.
 -->
 
-1. Verify/create a non-QMS-controlled working directory (e.g., `.test-env/`, `/projects/`, or other appropriate location)
+1. Verify/create the required development directory: `.test-env/` (local) or `/projects/` (containerized agents)
 2. Clone/update {{SYSTEM}} from GitHub
 3. Create and checkout branch `{{BRANCH_NAME}}`
 4. Verify clean test environment
@@ -341,7 +342,7 @@ Include for code CRs. Delete for document-only CRs.
 
 1. Verify RS is EFFECTIVE (document status check)
 2. Verify RTM is EFFECTIVE (document status check)
-3. Create PR to merge dev branch to main
+3. Create PR to merge dev branch to main. The PR must pass all CI checks before merge. Direct commits to main are prohibited.
 4. Merge PR using merge commit -- not squash (per SOP-005 Section 7.1.3)
 5. Verify qualified commit hash from execution branch is reachable on main
 6. Update submodule pointer in parent repo
