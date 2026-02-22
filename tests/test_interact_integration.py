@@ -291,13 +291,12 @@ class TestEngineManagedCommits:
     changes, commit with system message, and record the hash."""
 
     def test_commit_message_format(self):
-        """Commit message follows format: [QMS] {DOC_ID} | {context} | {prompt_id}."""
+        """Commit message follows format: [QMS] auto-commit | {DOC_ID} | {prompt_id} | description."""
         # Test the message construction logic from the interact command
         doc_id = "CR-091-VR-001"
         prompt_id = "step_actual.1"
-        context = "steps.1"
-        commit_msg = f"[QMS] {doc_id} | {context} | {prompt_id}"
-        assert commit_msg == "[QMS] CR-091-VR-001 | steps.1 | step_actual.1"
+        commit_msg = f"[QMS] auto-commit | {doc_id} | {prompt_id} | Evidence capture during VR execution"
+        assert commit_msg == "[QMS] auto-commit | CR-091-VR-001 | step_actual.1 | Evidence capture during VR execution"
 
     def test_commit_hash_recorded_in_response(self):
         """Commit hash is stored in the response entry."""
@@ -342,7 +341,7 @@ class TestEngineManagedCommits:
 
         from commands.interact import _do_engine_commit
         with patch('commands.interact.PROJECT_ROOT', tmp_path):
-            commit_hash = _do_engine_commit("CR-091-VR-001", "step_actual.1", "steps.1")
+            commit_hash = _do_engine_commit("CR-091-VR-001", "step_actual.1")
 
         assert len(commit_hash) == 7  # Short hash
 
@@ -351,7 +350,7 @@ class TestEngineManagedCommits:
             ["git", "log", "--oneline", "-1"],
             cwd=str(tmp_path), capture_output=True, text=True, check=True,
         )
-        assert "[QMS] CR-091-VR-001" in result.stdout
+        assert "[QMS] auto-commit" in result.stdout
         assert "step_actual.1" in result.stdout
 
 

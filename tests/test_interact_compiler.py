@@ -531,8 +531,8 @@ class TestContextAwareAttribution:
                 assert '*--' not in line
                 break
 
-    def test_loop_bold_not_broken(self, vr_template):
-        """Step instructions bold markers wrap only value, not attribution."""
+    def test_loop_instructions_blockquoted(self, vr_template):
+        """Step instructions use blockquote rendering with label."""
         source = create_source("VR-001", "VR", 5, "__end__",
                                metadata={"parent_doc_id": "CR-001",
                                           "vr_id": "VR-001", "title": "T"})
@@ -547,12 +547,13 @@ class TestContextAwareAttribution:
         add_response(source, "summary_narrative", "Done", "claude")
         source["loops"]["steps"] = {"iterations": 1, "closed": True, "reopenings": []}
         result = compile_document(source, vr_template)
-        # Bold should wrap only the value
-        assert "**Do thing**" in result
-        # Attribution should be on a separate line, not inside bold
+        # Instructions should be blockquoted, not bold
+        assert "> Do thing" in result
+        assert "**Instructions:**" in result
+        # Attribution should not be inside blockquote
         for line in result.split('\n'):
-            if line.startswith('**') and '*--' in line:
-                pytest.fail(f"Attribution inside bold markers: {line}")
+            if line.startswith('>') and '*--' in line:
+                pytest.fail(f"Attribution inside blockquote: {line}")
 
     def test_loop_attribution_outside_code_fence(self, vr_template):
         """Step actual attribution is outside code fences."""
@@ -838,6 +839,11 @@ class TestStepSubsectionNumbering:
         result = compile_document(source, vr_template)
         assert "### 4.1 Step 1" in result
         assert "### 4.2 Step 2" in result
+        # CR-097: Verify step subsection labels
+        assert "**Instructions:**" in result
+        assert "**Expected:**" in result
+        assert "**Actual:**" in result
+        assert "**Outcome:**" in result
 
     def test_step_expected_blockquoted(self, vr_template):
         """Step expected values are rendered as blockquotes."""
@@ -857,6 +863,7 @@ class TestStepSubsectionNumbering:
 
         result = compile_document(source, vr_template)
         assert "> Should see output" in result
+        assert "**Expected:**" in result  # CR-097: label present
 
     def test_step_actual_code_fenced(self, vr_template):
         """Step actual values are in code fences."""
@@ -887,6 +894,7 @@ class TestStepSubsectionNumbering:
                 found = True
                 break
         assert found, "Step actual not found in code fence"
+        assert "**Actual:**" in result  # CR-097: label present
 
 
 # =============================================================================

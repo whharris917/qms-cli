@@ -11,6 +11,7 @@ REQ-INT-020: Engine-managed commits
 REQ-INT-021: Commit staging scope
 
 Created as part of CR-091: Interaction System Engine
+Updated by CR-097: VR compilation rendering fixes (commit message format)
 """
 import subprocess
 import sys
@@ -106,7 +107,7 @@ def _format_progress(items: list) -> str:
     return '\n'.join(lines)
 
 
-def _do_engine_commit(doc_id: str, prompt_id: str, context: str = "") -> str:
+def _do_engine_commit(doc_id: str, prompt_id: str) -> str:
     """
     Perform an engine-managed git commit (REQ-INT-020, REQ-INT-021).
 
@@ -116,7 +117,7 @@ def _do_engine_commit(doc_id: str, prompt_id: str, context: str = "") -> str:
     if PROJECT_ROOT is None:
         return ""
 
-    commit_msg = f"[QMS] {doc_id} | {context} | {prompt_id}"
+    commit_msg = f"[QMS] auto-commit | {doc_id} | {prompt_id} | Evidence capture during VR execution"
 
     try:
         # Stage all changes in working tree (REQ-INT-021)
@@ -300,17 +301,12 @@ def cmd_interact(args) -> int:
             # Check if this prompt triggers a commit (REQ-INT-020)
             commit_hash = None
             if isinstance(node, PromptNode) and node.commit:
-                # Build context string for commit message
                 ctx = source.get("cursor_context", {})
-                context_parts = []
-                if ctx.get("loop"):
-                    context_parts.append(f"{ctx['loop']}.{ctx.get('iteration', '?')}")
-                context = ' | '.join(context_parts) if context_parts else ""
                 display_id = cursor
                 if ctx.get("iteration"):
                     from interact_source import make_iteration_id
                     display_id = make_iteration_id(cursor, ctx["iteration"])
-                commit_hash = _do_engine_commit(doc_id, display_id, context)
+                commit_hash = _do_engine_commit(doc_id, display_id)
 
             result = engine.respond(value, user, reason=reason, commit_hash=commit_hash)
             save_session(source, session_path)
