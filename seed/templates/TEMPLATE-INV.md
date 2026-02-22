@@ -1,6 +1,6 @@
 ---
 title: 'Investigation Template'
-revision_summary: Initial release
+revision_summary: 'CR-098: Reconcile with QMS copy (align per INV-013)'
 ---
 
 <!--
@@ -20,7 +20,7 @@ When creating an INV from this template, copy from the EXAMPLE FRONTMATTER onwar
 
 ---
 title: '{{TITLE}}'
-revision_summary: Initial release
+revision_summary: 'Initial draft'
 ---
 
 <!--

@@ -1,7 +1,6 @@
 ---
 title: Variance Report Template
-revision_summary: 'CR-084: Add integration verification guidance for code-related
-  resolution'
+revision_summary: 'CR-098: Add VR column to resolution work EI table guidance (align with QMS per INV-013)'
 ---
 
 <!--
@@ -156,7 +155,8 @@ FOR TEST-RELATED VARIANCES (parent is TC or TP):
 
 FOR CR/INV VARIANCES:
   Use EI table structure:
-  | EI | Task Description | Execution Summary | Task Outcome | Performed By — Date |
+  | EI | Task Description | VR | Execution Summary | Task Outcome | Performed By — Date |
+  Set VR column to "Yes" for items requiring behavioral verification (per SOP-004 Section 9C).
 
 FOR SIMPLE RESOLUTIONS:
   Use narrative + evidence format

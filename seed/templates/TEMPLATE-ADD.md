@@ -1,6 +1,6 @@
 ---
 title: 'Addendum Report Template'
-revision_summary: 'CR-082: Initial creation'
+revision_summary: 'CR-098: Add VR column to EI table (align with QMS per INV-013)'
 ---
 
 <!--
@@ -141,10 +141,10 @@ TASK OUTCOME:
 - Fail: Task could not be completed as planned - attach VAR with explanation
 -->
 
-| EI | Task Description | Execution Summary | Task Outcome | Performed By — Date |
-|----|------------------|-------------------|--------------|---------------------|
-| EI-1 | {{DESCRIPTION}} | [SUMMARY] | [Pass/Fail] | [PERFORMER] — [DATE] |
-| EI-2 | {{DESCRIPTION}} | [SUMMARY] | [Pass/Fail] | [PERFORMER] — [DATE] |
+| EI | Task Description | VR | Execution Summary | Task Outcome | Performed By — Date |
+|----|------------------|----|-------------------|--------------|---------------------|
+| EI-1 | {{DESCRIPTION}} | | [SUMMARY] | [Pass/Fail] | [PERFORMER] — [DATE] |
+| EI-2 | {{DESCRIPTION}} | | [SUMMARY] | [Pass/Fail] | [PERFORMER] — [DATE] |
 
 <!--
 NOTE: Do NOT delete this comment. It provides guidance during document execution.
