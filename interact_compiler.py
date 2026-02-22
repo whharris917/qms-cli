@@ -8,6 +8,7 @@ REQ-INT-016: Compilation
 
 Created as part of CR-091: Interaction System Engine
 Updated by CR-094: Interactive Compilation Defects
+Updated by CR-095: Block rendering, auto-metadata, step subsection numbering
 """
 
 import re
@@ -62,6 +63,46 @@ def _strip_template_preamble(template_text: str) -> str:
     return template_text
 
 
+def _inject_auto_metadata(source: dict) -> None:
+    """
+    Auto-generate metadata fields from source response data (REQ-INT-023).
+
+    Computes date, performer, performed_date from response timestamps and
+    authors. Only injects if not already present in metadata, preserving
+    any explicit values.
+    """
+    metadata = source.setdefault("metadata", {})
+    responses = source.get("responses", {})
+
+    # Collect all timestamps and authors from responses
+    timestamps = []
+    authors = set()
+    for entries in responses.values():
+        for entry in entries:
+            ts = entry.get("timestamp", "")
+            if ts:
+                timestamps.append(ts)
+            author = entry.get("author", "")
+            if author:
+                authors.add(author)
+
+    # Auto-generate date from earliest response timestamp
+    if "date" not in metadata and timestamps:
+        earliest = min(timestamps)
+        date_str = earliest.split("T")[0] if "T" in earliest else earliest
+        metadata["date"] = date_str
+
+    # Auto-generate performer from response authors
+    if "performer" not in metadata and authors:
+        metadata["performer"] = ", ".join(sorted(authors))
+
+    # Auto-generate performed_date from latest response timestamp
+    if "performed_date" not in metadata and timestamps:
+        latest = max(timestamps)
+        date_str = latest.split("T")[0] if "T" in latest else latest
+        metadata["performed_date"] = date_str
+
+
 def compile_document(source: dict, template_text: str) -> str:
     """
     Compile an interactive source into markdown.
@@ -70,11 +111,11 @@ def compile_document(source: dict, template_text: str) -> str:
     0. Strip template preamble (template FM, notice comment)
     1. Strip all <!-- @... --> tags and guidance prose
        - @end-prompt marks the end of guidance
+    1.5. Auto-generate metadata from source (REQ-INT-023)
     2. Substitute {{placeholders}} with context-aware rendering
        - Table rows: value only, no attribution
-       - Block context: full response in blockquote
-       - Label/other: full response inline
-    3. Expand loop iterations with separated value/attribution
+       - Non-table: blockquote with attribution below (REQ-INT-024)
+    3. Expand loop iterations with subsection numbering (REQ-INT-025)
     4. Clean up excessive blank lines
 
     Args:
@@ -191,6 +232,9 @@ def compile_document(source: dict, template_text: str) -> str:
         output_lines.append(line)
         i += 1
 
+    # Phase 1.5: Auto-generate metadata from source (REQ-INT-023)
+    _inject_auto_metadata(source)
+
     # Phase 2: Substitute placeholders and render amendment trails
     result_lines = []
     for line in output_lines:
@@ -210,18 +254,18 @@ def compile_document(source: dict, template_text: str) -> str:
 
 
 def _substitute_line(line: str, source: dict) -> Optional[str]:
-    """Substitute placeholders with context-aware rendering.
+    """Substitute placeholders with context-aware rendering (REQ-INT-024).
 
     Context detection:
     - Table (line starts with |): value only, no attribution
-    - Block (line is just {{placeholder}}): full response in blockquote
-    - Label/other: full response inline
+    - Block (any non-table line with response substitution): blockquote
+      with attribution below
     """
     metadata = source.get("metadata", {})
     stripped = line.strip()
     is_table = stripped.startswith('|')
-    is_block = bool(re.match(r'^\s*\{\{\w+\}\}\s*$', stripped))
     has_response_sub = False
+    block_entries = []  # Track entries for block rendering
 
     def replace_placeholder(m):
         nonlocal has_response_sub
@@ -240,17 +284,23 @@ def _substitute_line(line: str, source: dict) -> Optional[str]:
                 # Tables: active value only (no trail, no attribution)
                 return entries[-1]['value']
             else:
-                return _render_response(ref_id, entries)
+                block_entries.extend(entries)
+                return _render_value_only(entries)
 
         return ''
 
     result = re.sub(r'\{\{(\w+)\}\}', replace_placeholder, line)
 
-    # Block context: wrap in blockquote
-    if is_block and not is_table and has_response_sub:
+    # Block context: wrap in blockquote with attribution below
+    if not is_table and has_response_sub:
         content = result.strip()
         if content:
-            result = '\n'.join(f"> {rl}" for rl in content.split('\n'))
+            quoted = '\n'.join(f"> {rl}" for rl in content.split('\n'))
+            attrs = _render_attributions(block_entries)
+            if attrs:
+                result = f"{quoted}\n\n{attrs}"
+            else:
+                result = quoted
 
     return result
 
@@ -333,6 +383,7 @@ def _expand_loops(text: str, source: dict) -> str:
     source has step_instructions.1, step_instructions.2, etc.
 
     This function detects the loop pattern and expands iterations.
+    REQ-INT-025: Step subsection numbering (4.1 Step 1, 4.2 Step 2, etc.)
     """
     # Find all iteration-indexed responses
     loop_prompts = {}  # base_id -> {iteration -> entries}
@@ -352,17 +403,26 @@ def _expand_loops(text: str, source: dict) -> str:
         if iterations < 1:
             continue
 
-        # Look for "### Step" followed by content until next "### Step" or "## "
+        # REQ-INT-025: Match subsection-numbered step headings
+        # Phase 2 turns `### 4.{{_n}} Step {{_n}}` into `### 4. Step `
         step_pattern = re.compile(
-            r'(### Step\s*\n)(.*?)(?=### Step|\n## |\Z)',
+            r'(### 4\.\s*Step\s*\n)(.*?)(?=### 4\.|\n## |\Z)',
             re.DOTALL
         )
 
         match = step_pattern.search(text)
+        if not match:
+            # Fallback: match unnumbered `### Step` for backward compat
+            step_pattern = re.compile(
+                r'(### Step\s*\n)(.*?)(?=### Step|\n## |\Z)',
+                re.DOTALL
+            )
+            match = step_pattern.search(text)
+
         if match:
             step_blocks = []
             for n in range(1, iterations + 1):
-                block = f"### Step {n}\n\n"
+                block = f"### 4.{n} Step {n}\n\n"
                 for base_id, iter_data in loop_prompts.items():
                     if n in iter_data:
                         entries = iter_data[n]
@@ -372,11 +432,13 @@ def _expand_loops(text: str, source: dict) -> str:
                         if base_id.startswith("step_instructions"):
                             block += f"**{value}**\n{attrs}\n\n"
                         elif base_id.startswith("step_expected"):
-                            block += f"**Expected:** {value}\n{attrs}\n\n"
+                            quoted = '\n'.join(f"> {vl}" for vl in value.split('\n'))
+                            block += f"{quoted}\n\n{attrs}\n\n"
                         elif base_id.startswith("step_actual"):
-                            block += f"**Actual:**\n\n```\n{value}\n```\n{attrs}\n\n"
+                            block += f"```\n{value}\n```\n{attrs}\n\n"
                         elif base_id.startswith("step_outcome"):
-                            block += f"**Outcome:** {value}\n{attrs}\n\n"
+                            quoted = '\n'.join(f"> {vl}" for vl in value.split('\n'))
+                            block += f"{quoted}\n\n{attrs}\n\n"
 
                 step_blocks.append(block)
 

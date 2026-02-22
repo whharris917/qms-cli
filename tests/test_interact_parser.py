@@ -269,7 +269,7 @@ class TestTemplateHeader:
             text = template_path.read_text(encoding="utf-8")
             graph = parse_template(text)
             assert graph.header.name == "VR"
-            assert graph.header.version == 4
+            assert graph.header.version == 5
             assert graph.header.start == "related_eis"
 
 
@@ -461,16 +461,17 @@ class TestRealTemplateVR:
     def test_vr_has_correct_header(self, vr_graph):
         """VR template has correct header metadata."""
         assert vr_graph.header.name == "VR"
-        assert vr_graph.header.version == 4
+        assert vr_graph.header.version == 5
         assert vr_graph.header.start == "related_eis"
 
     def test_vr_has_expected_prompts(self, vr_graph):
         """VR template has all expected prompt nodes."""
         prompt_ids = vr_graph.get_prompt_ids()
+        # VR v5: removed date, performer, performed_date prompts (now auto-generated)
         expected = [
-            "related_eis", "date", "objective", "pre_conditions",
+            "related_eis", "objective", "pre_conditions",
             "step_instructions", "step_expected", "step_actual", "step_outcome",
-            "summary_outcome", "summary_narrative", "performer", "performed_date",
+            "summary_outcome", "summary_narrative",
         ]
         for pid in expected:
             assert pid in prompt_ids, f"Missing prompt: {pid}"
@@ -489,10 +490,9 @@ class TestRealTemplateVR:
         assert vr_graph.nodes["step_actual"].commit is True
 
     def test_vr_total_node_count(self, vr_graph):
-        """VR template has expected number of nodes (13 prompts + 1 gate + __end__)."""
-        # 12 prompts + 1 gate + __end__ = 14 total in nodes dict
-        # (performed_date is a prompt too)
-        assert len(vr_graph.nodes) >= 14
+        """VR template has expected number of nodes (9 prompts + 1 gate + __end__)."""
+        # VR v5: 9 prompts + 1 gate + __end__ = 11 total in nodes dict
+        assert len(vr_graph.nodes) >= 11
 
 
 # =============================================================================
