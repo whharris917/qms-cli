@@ -9,6 +9,7 @@ REQ-INT-016: Compilation
 Created as part of CR-091: Interaction System Engine
 Updated by CR-094: Interactive Compilation Defects
 Updated by CR-095: Block rendering, auto-metadata, step subsection numbering
+Updated by CR-097: VR compilation rendering fixes (labels, blockquote instructions, commit messages)
 """
 
 import re
@@ -430,15 +431,16 @@ def _expand_loops(text: str, source: dict) -> str:
                         attrs = _render_attributions(entries)
 
                         if base_id.startswith("step_instructions"):
-                            block += f"**{value}**\n{attrs}\n\n"
+                            quoted = '\n'.join(f"> {vl}" for vl in value.split('\n'))
+                            block += f"**Instructions:**\n\n{quoted}\n\n{attrs}\n\n"
                         elif base_id.startswith("step_expected"):
                             quoted = '\n'.join(f"> {vl}" for vl in value.split('\n'))
-                            block += f"{quoted}\n\n{attrs}\n\n"
+                            block += f"**Expected:**\n\n{quoted}\n\n{attrs}\n\n"
                         elif base_id.startswith("step_actual"):
-                            block += f"```\n{value}\n```\n{attrs}\n\n"
+                            block += f"**Actual:**\n\n```\n{value}\n```\n\n{attrs}\n\n"
                         elif base_id.startswith("step_outcome"):
                             quoted = '\n'.join(f"> {vl}" for vl in value.split('\n'))
-                            block += f"{quoted}\n\n{attrs}\n\n"
+                            block += f"**Outcome:**\n\n{quoted}\n\n{attrs}\n\n"
 
                 step_blocks.append(block)
 
