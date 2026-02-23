@@ -56,9 +56,6 @@ def check_clean_runway(root: Path) -> list[str]:
     if (root / ".claude" / "agents" / "qa.md").exists():
         blockers.append(f".claude/agents/qa.md already exists at {root / '.claude' / 'agents' / 'qa.md'}")
 
-    if (root / "QMS-Docs").exists():
-        blockers.append(f"QMS-Docs/ directory already exists at {root / 'QMS-Docs'}")
-
     if (root / "CLAUDE.md").exists():
         blockers.append(f"CLAUDE.md already exists at {root / 'CLAUDE.md'}")
 
@@ -175,23 +172,6 @@ def create_audit_file(audit_dir: Path, doc_id: str) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
-def seed_docs(root: Path) -> int:
-    """Copy seed documentation to QMS-Docs/ at project root."""
-    seed_dir = get_seed_dir()
-    docs_src = seed_dir / "docs"
-    docs_dst = root / "QMS-Docs"
-
-    if not docs_src.exists():
-        print(f"  Warning: Seed docs not found at {docs_src}")
-        return 0
-
-    shutil.copytree(docs_src, docs_dst)
-
-    count = sum(1 for _ in docs_dst.rglob("*.md"))
-    print(f"  Seeded: QMS-Docs/ ({count} files)")
-    return count
-
-
 def seed_hooks(root: Path) -> int:
     """Copy seed hooks to .claude/hooks/."""
     seed_dir = get_seed_dir()
@@ -300,7 +280,6 @@ def cmd_init(args) -> int:
     - qms.config.json (project root marker)
     - QMS/ directory structure
     - User workspaces and inboxes (lead, claude, qa, tu)
-    - QMS-Docs/ educational documentation
     - Default agent definitions (qa.md, tu.md)
     - .claude/hooks/ with write guard
     - CLAUDE.md starter orchestrator instructions
@@ -348,7 +327,6 @@ def cmd_init(args) -> int:
     print("Seeding documents and resources...")
 
     try:
-        seed_docs(root)
         seed_templates(root)
         seed_agents(root)
         seed_hooks(root)
@@ -361,9 +339,10 @@ def cmd_init(args) -> int:
     print("QMS project initialized successfully!")
     print()
     print("Next steps:")
-    print("  1. Review QMS-Docs/ for an overview of how the QMS works")
-    print("  2. Customize CLAUDE.md with your project architecture")
-    print("  3. Create your first document: python qms-cli/qms.py --user claude create CR --title \"My Change\"")
-    print("  4. Check your inbox: python qms-cli/qms.py --user claude inbox")
+    print("  1. Read the QMS Manual at qms-cli/manual/ for how the QMS works")
+    print("  2. Read the tool docs at qms-cli/docs/ for CLI usage")
+    print("  3. Customize CLAUDE.md with your project architecture")
+    print("  4. Create your first document: python qms-cli/qms.py --user claude create CR --title \"My Change\"")
+    print("  5. Check your inbox: python qms-cli/qms.py --user claude inbox")
 
     return 0
