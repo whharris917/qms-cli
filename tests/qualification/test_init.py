@@ -2,7 +2,7 @@
 QMS CLI Qualification Tests: Initialization and User Management
 
 Tests for the init command and user management functionality.
-Verifies requirements: INIT-001, INIT-002, INIT-003, USER-001, USER-002, USER-003
+Verifies requirements: INIT-001 through INIT-010, USER-001, USER-002, USER-003
 """
 import json
 import subprocess
@@ -83,20 +83,18 @@ def test_init_creates_complete_structure(clean_project):
     """
     Verify init creates complete QMS infrastructure on clean directory.
 
-    Verifies: REQ-INIT-001
+    Verifies: REQ-INIT-001, REQ-INIT-002, REQ-INIT-003
     """
-    # [REQ-INIT-001] Init creates complete structure
+    # [REQ-INIT-001] Init creates config file
     result = run_qms_init(clean_project)
     assert result.returncode == 0, f"Init should succeed: {result.stderr}"
 
-    # Verify qms.config.json created
     config_path = clean_project / "qms.config.json"
     assert config_path.exists(), "qms.config.json should be created"
     config = json.loads(config_path.read_text(encoding="utf-8"))
     assert config.get("version") == "1.0", "Config should have version 1.0"
 
-    # Verify QMS directories created
-    assert (clean_project / "QMS" / "SOP").is_dir(), "QMS/SOP should exist"
+    # [REQ-INIT-002] QMS directories created (no SOP directory)
     assert (clean_project / "QMS" / "CR").is_dir(), "QMS/CR should exist"
     assert (clean_project / "QMS" / "INV").is_dir(), "QMS/INV should exist"
     assert (clean_project / "QMS" / "TEMPLATE").is_dir(), "QMS/TEMPLATE should exist"
@@ -104,37 +102,40 @@ def test_init_creates_complete_structure(clean_project):
     assert (clean_project / "QMS" / ".audit").is_dir(), "QMS/.audit should exist"
     assert (clean_project / "QMS" / ".archive").is_dir(), "QMS/.archive should exist"
 
-    # Verify user workspaces created
-    for user in ["lead", "claude", "qa"]:
+    # [REQ-INIT-003] User workspaces for all default users including tu
+    for user in ["lead", "claude", "qa", "tu"]:
         workspace = clean_project / ".claude" / "users" / user / "workspace"
         inbox = clean_project / ".claude" / "users" / user / "inbox"
         assert workspace.is_dir(), f"Workspace for {user} should exist"
         assert inbox.is_dir(), f"Inbox for {user} should exist"
 
 
-def test_init_seeds_sops(clean_project):
+def test_init_seeds_docs(clean_project):
     """
-    Verify init seeds SOPs with correct metadata.
+    Verify init seeds QMS-Docs/ with educational documentation.
 
-    Verifies: REQ-INIT-002
+    Verifies: REQ-INIT-006
     """
     run_qms_init(clean_project)
 
-    # [REQ-INIT-002] SOPs are seeded
-    sop_dir = clean_project / "QMS" / "SOP"
-    seeded_sops = list(sop_dir.glob("SOP-*.md"))
-    assert len(seeded_sops) >= 1, "At least one SOP should be seeded"
+    # [REQ-INIT-006] Documentation is seeded
+    docs_dir = clean_project / "QMS-Docs"
+    assert docs_dir.is_dir(), "QMS-Docs/ should exist"
 
-    # Check first SOP has correct metadata
-    sop_001_meta = read_meta(clean_project, "SOP-001", "SOP")
-    assert sop_001_meta is not None, "SOP-001 should have metadata"
-    assert sop_001_meta.get("version") == "1.0", "SOP should be v1.0"
-    assert sop_001_meta.get("status") == "EFFECTIVE", "SOP should be EFFECTIVE"
+    # Key files must be present
+    assert (docs_dir / "QMS-Policy.md").exists(), "QMS-Policy.md should be seeded"
+    assert (docs_dir / "QMS-Glossary.md").exists(), "QMS-Glossary.md should be seeded"
+    assert (docs_dir / "START_HERE.md").exists(), "START_HERE.md should be seeded"
 
-    # Check audit trail
-    sop_001_audit = read_audit(clean_project, "SOP-001", "SOP")
-    assert len(sop_001_audit) >= 1, "SOP-001 should have audit entry"
-    assert sop_001_audit[0].get("action") == "seed", "First audit action should be seed"
+    # Guides and type references should be present
+    assert (docs_dir / "guides").is_dir(), "guides/ subdirectory should exist"
+    assert (docs_dir / "types").is_dir(), "types/ subdirectory should exist"
+
+    # At least some guide and type files
+    guides = list((docs_dir / "guides").glob("*.md"))
+    assert len(guides) >= 1, "At least one guide should be seeded"
+    types = list((docs_dir / "types").glob("*.md"))
+    assert len(types) >= 1, "At least one type reference should be seeded"
 
 
 def test_init_seeds_templates(clean_project):
@@ -151,21 +152,25 @@ def test_init_seeds_templates(clean_project):
     assert len(seeded_templates) >= 1, "At least one template should be seeded"
 
 
-def test_init_seeds_qa_agent(clean_project):
+def test_init_seeds_agents(clean_project):
     """
-    Verify init seeds qa agent definition.
+    Verify init seeds qa and tu agent definitions.
 
-    Verifies: REQ-INIT-002
+    Verifies: REQ-INIT-004
     """
     run_qms_init(clean_project)
 
-    # [REQ-INIT-002] QA agent is seeded
+    # [REQ-INIT-004] QA agent is seeded with quality group
     qa_agent = clean_project / ".claude" / "agents" / "qa.md"
     assert qa_agent.exists(), "qa.md agent should be seeded"
+    qa_content = qa_agent.read_text(encoding="utf-8")
+    assert "group: quality" in qa_content, "QA agent should have group: quality"
 
-    # Verify agent has group frontmatter
-    content = qa_agent.read_text(encoding="utf-8")
-    assert "group:" in content, "QA agent should have group in frontmatter"
+    # [REQ-INIT-004] TU agent is seeded with reviewer group
+    tu_agent = clean_project / ".claude" / "agents" / "tu.md"
+    assert tu_agent.exists(), "tu.md agent should be seeded"
+    tu_content = tu_agent.read_text(encoding="utf-8")
+    assert "group: reviewer" in tu_content, "TU agent should have group: reviewer"
 
 
 # ============================================================================
@@ -176,12 +181,12 @@ def test_init_blocked_by_existing_qms(clean_project):
     """
     Verify init is blocked when QMS/ directory exists.
 
-    Verifies: REQ-INIT-003
+    Verifies: REQ-INIT-009
     """
     # Create blocking structure
     (clean_project / "QMS").mkdir()
 
-    # [REQ-INIT-003] Init blocked by existing infrastructure
+    # [REQ-INIT-009] Init blocked by existing infrastructure
     result = run_qms_init(clean_project)
     assert result.returncode != 0, "Init should fail with existing QMS/"
     assert "QMS/" in result.stdout or "already exists" in result.stdout.lower(), \
@@ -192,7 +197,7 @@ def test_init_blocked_by_existing_users(clean_project):
     """
     Verify init is blocked when .claude/users/ directory exists.
 
-    Verifies: REQ-INIT-003
+    Verifies: REQ-INIT-009
     """
     (clean_project / ".claude" / "users").mkdir(parents=True)
 
@@ -205,7 +210,7 @@ def test_init_blocked_by_existing_qa_agent(clean_project):
     """
     Verify init is blocked when .claude/agents/qa.md exists.
 
-    Verifies: REQ-INIT-003
+    Verifies: REQ-INIT-009
     """
     (clean_project / ".claude" / "agents").mkdir(parents=True)
     (clean_project / ".claude" / "agents" / "qa.md").write_text("# Existing agent")
@@ -219,13 +224,83 @@ def test_init_blocked_by_existing_config(clean_project):
     """
     Verify init is blocked when qms.config.json exists.
 
-    Verifies: REQ-INIT-003
+    Verifies: REQ-INIT-009
     """
     (clean_project / "qms.config.json").write_text('{"version": "1.0"}')
 
     result = run_qms_init(clean_project)
     assert result.returncode != 0, "Init should fail with existing qms.config.json"
     assert "config" in result.stdout.lower() or "already exists" in result.stdout.lower()
+
+
+def test_init_blocked_by_existing_qms_docs(clean_project):
+    """
+    Verify init is blocked when QMS-Docs/ directory exists.
+
+    Verifies: REQ-INIT-009
+    """
+    (clean_project / "QMS-Docs").mkdir()
+
+    result = run_qms_init(clean_project)
+    assert result.returncode != 0, "Init should fail with existing QMS-Docs/"
+    assert "QMS-Docs" in result.stdout or "already exists" in result.stdout.lower()
+
+
+def test_init_blocked_by_existing_claude_md(clean_project):
+    """
+    Verify init is blocked when CLAUDE.md exists.
+
+    Verifies: REQ-INIT-009
+    """
+    (clean_project / "CLAUDE.md").write_text("# Existing CLAUDE.md")
+
+    result = run_qms_init(clean_project)
+    assert result.returncode != 0, "Init should fail with existing CLAUDE.md"
+    assert "CLAUDE.md" in result.stdout or "already exists" in result.stdout.lower()
+
+
+# ============================================================================
+# Test: Hooks and CLAUDE.md Seeding
+# ============================================================================
+
+def test_init_seeds_hooks(clean_project):
+    """
+    Verify init seeds .claude/hooks/ with write guard.
+
+    Verifies: REQ-INIT-007
+    """
+    run_qms_init(clean_project)
+
+    # [REQ-INIT-007] Hooks directory is seeded
+    hooks_dir = clean_project / ".claude" / "hooks"
+    assert hooks_dir.is_dir(), ".claude/hooks/ should exist"
+
+    # Write guard hook must be present
+    write_guard = hooks_dir / "qms-write-guard.py"
+    assert write_guard.exists(), "qms-write-guard.py should be seeded"
+
+    # Verify it blocks QMS-managed directories
+    content = write_guard.read_text(encoding="utf-8")
+    assert "QMS/.meta/" in content, "Write guard should protect QMS/.meta/"
+    assert "QMS/.audit/" in content, "Write guard should protect QMS/.audit/"
+    assert "QMS/.archive/" in content, "Write guard should protect QMS/.archive/"
+
+
+def test_init_seeds_claude_md(clean_project):
+    """
+    Verify init seeds CLAUDE.md at project root.
+
+    Verifies: REQ-INIT-008
+    """
+    run_qms_init(clean_project)
+
+    # [REQ-INIT-008] CLAUDE.md is seeded
+    claude_md = clean_project / "CLAUDE.md"
+    assert claude_md.exists(), "CLAUDE.md should be seeded"
+
+    content = claude_md.read_text(encoding="utf-8")
+    assert "QMS" in content, "CLAUDE.md should mention QMS"
+    assert "claude" in content.lower(), "CLAUDE.md should reference claude identity"
 
 
 # ============================================================================
@@ -363,7 +438,7 @@ def test_init_with_root_flag(clean_project, tmp_path_factory):
     """
     Verify init --root creates structure in specified directory.
 
-    Verifies: REQ-INIT-001
+    Verifies: REQ-INIT-010
     """
     # Create a different target directory
     target = tmp_path_factory.mktemp("target_project")
@@ -377,5 +452,9 @@ def test_init_with_root_flag(clean_project, tmp_path_factory):
         "Config should NOT be in cwd"
     assert (target / "qms.config.json").exists(), \
         "Config should be in --root target"
-    assert (target / "QMS" / "SOP").is_dir(), \
-        "QMS/SOP should be in --root target"
+    assert (target / "QMS" / "CR").is_dir(), \
+        "QMS/CR should be in --root target"
+    assert (target / "QMS-Docs").is_dir(), \
+        "QMS-Docs should be in --root target"
+    assert (target / "CLAUDE.md").exists(), \
+        "CLAUDE.md should be in --root target"

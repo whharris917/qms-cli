@@ -56,6 +56,12 @@ def check_clean_runway(root: Path) -> list[str]:
     if (root / ".claude" / "agents" / "qa.md").exists():
         blockers.append(f".claude/agents/qa.md already exists at {root / '.claude' / 'agents' / 'qa.md'}")
 
+    if (root / "QMS-Docs").exists():
+        blockers.append(f"QMS-Docs/ directory already exists at {root / 'QMS-Docs'}")
+
+    if (root / "CLAUDE.md").exists():
+        blockers.append(f"CLAUDE.md already exists at {root / 'CLAUDE.md'}")
+
     if (root / CONFIG_FILE).exists():
         blockers.append(f"{CONFIG_FILE} already exists at {root / CONFIG_FILE}")
 
@@ -88,13 +94,10 @@ def create_qms_structure(root: Path) -> None:
     # Create main directories
     directories = [
         qms_root / ".meta",
-        qms_root / ".meta" / "SOP",
         qms_root / ".meta" / "TEMPLATE",
         qms_root / ".audit",
-        qms_root / ".audit" / "SOP",
         qms_root / ".audit" / "TEMPLATE",
         qms_root / ".archive",
-        qms_root / "SOP",
         qms_root / "CR",
         qms_root / "INV",
         qms_root / "TEMPLATE",
@@ -110,8 +113,8 @@ def create_user_workspaces(root: Path) -> None:
     """Create user workspace and inbox directories."""
     users_root = root / ".claude" / "users"
 
-    # Default users: lead, claude, qa
-    default_users = ["lead", "claude", "qa"]
+    # Default users: lead, claude, qa, tu
+    default_users = ["lead", "claude", "qa", "tu"]
 
     for user in default_users:
         workspace = users_root / user / "workspace"
@@ -172,35 +175,57 @@ def create_audit_file(audit_dir: Path, doc_id: str) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
-def seed_sops(root: Path) -> int:
-    """Copy seed SOPs to QMS/SOP/ with metadata."""
+def seed_docs(root: Path) -> int:
+    """Copy seed documentation to QMS-Docs/ at project root."""
     seed_dir = get_seed_dir()
-    sops_src = seed_dir / "sops"
-    sops_dst = root / "QMS" / "SOP"
-    meta_dir = root / "QMS" / ".meta" / "SOP"
-    audit_dir = root / "QMS" / ".audit" / "SOP"
+    docs_src = seed_dir / "docs"
+    docs_dst = root / "QMS-Docs"
 
-    if not sops_src.exists():
-        print(f"  Warning: Seed SOPs not found at {sops_src}")
+    if not docs_src.exists():
+        print(f"  Warning: Seed docs not found at {docs_src}")
         return 0
 
-    count = 0
-    for sop_file in sorted(sops_src.glob("SOP-*.md")):
-        # Copy document
-        dst_path = sops_dst / sop_file.name
-        shutil.copy2(sop_file, dst_path)
+    shutil.copytree(docs_src, docs_dst)
 
-        # Extract doc_id from filename (e.g., SOP-001.md -> SOP-001)
-        doc_id = sop_file.stem
-
-        # Create metadata
-        create_meta_file(meta_dir, doc_id, "SOP", executable=False)
-        create_audit_file(audit_dir, doc_id)
-
-        count += 1
-
-    print(f"  Seeded: {count} SOPs")
+    count = sum(1 for _ in docs_dst.rglob("*.md"))
+    print(f"  Seeded: QMS-Docs/ ({count} files)")
     return count
+
+
+def seed_hooks(root: Path) -> int:
+    """Copy seed hooks to .claude/hooks/."""
+    seed_dir = get_seed_dir()
+    hooks_src = seed_dir / "hooks"
+    hooks_dst = root / ".claude" / "hooks"
+
+    if not hooks_src.exists():
+        print(f"  Warning: Seed hooks not found at {hooks_src}")
+        return 0
+
+    hooks_dst.mkdir(parents=True, exist_ok=True)
+
+    count = 0
+    for hook_file in sorted(hooks_src.iterdir()):
+        if hook_file.is_file():
+            shutil.copy2(hook_file, hooks_dst / hook_file.name)
+            count += 1
+
+    print(f"  Seeded: {count} hook(s) in .claude/hooks/")
+    return count
+
+
+def seed_claude_md(root: Path) -> None:
+    """Copy starter CLAUDE.md to project root."""
+    seed_dir = get_seed_dir()
+    claude_src = seed_dir / "claude.md"
+    claude_dst = root / "CLAUDE.md"
+
+    if not claude_src.exists():
+        print(f"  Warning: Seed CLAUDE.md not found at {claude_src}")
+        return
+
+    shutil.copy2(claude_src, claude_dst)
+    print(f"  Seeded: CLAUDE.md")
 
 
 def seed_templates(root: Path) -> int:
@@ -274,8 +299,11 @@ def cmd_init(args) -> int:
     This command creates:
     - qms.config.json (project root marker)
     - QMS/ directory structure
-    - User workspaces and inboxes
-    - Default agent definitions
+    - User workspaces and inboxes (lead, claude, qa, tu)
+    - QMS-Docs/ educational documentation
+    - Default agent definitions (qa.md, tu.md)
+    - .claude/hooks/ with write guard
+    - CLAUDE.md starter orchestrator instructions
 
     Safety: All checks must pass before any changes are made.
     """
@@ -315,14 +343,16 @@ def cmd_init(args) -> int:
         print(f"\nERROR: Failed to create infrastructure: {e}")
         return 1
 
-    # Seed documents
+    # Seed documents and resources
     print()
-    print("Seeding documents...")
+    print("Seeding documents and resources...")
 
     try:
-        seed_sops(root)
+        seed_docs(root)
         seed_templates(root)
         seed_agents(root)
+        seed_hooks(root)
+        seed_claude_md(root)
     except Exception as e:
         print(f"\nERROR: Failed to seed documents: {e}")
         return 1
@@ -331,8 +361,9 @@ def cmd_init(args) -> int:
     print("QMS project initialized successfully!")
     print()
     print("Next steps:")
-    print("  1. Review seeded SOPs in QMS/SOP/")
-    print("  2. Create your first document: python qms-cli/qms.py --user claude create CR --title \"My Change\"")
-    print("  3. Check your inbox: python qms-cli/qms.py --user claude inbox")
+    print("  1. Review QMS-Docs/ for an overview of how the QMS works")
+    print("  2. Customize CLAUDE.md with your project architecture")
+    print("  3. Create your first document: python qms-cli/qms.py --user claude create CR --title \"My Change\"")
+    print("  4. Check your inbox: python qms-cli/qms.py --user claude inbox")
 
     return 0
