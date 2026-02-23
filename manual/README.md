@@ -1,6 +1,8 @@
-# QMS Documentation
+# QMS Manual
 
-User-facing documentation for the Quality Management System.
+Operational documentation for the Quality Management System — policy, governance philosophy, workflows, evidence standards, and review expectations. This is the "how to operate a QMS" layer.
+
+For software documentation about the CLI tool itself (installation, commands, configuration), see [docs/](../docs/).
 
 ## Structure
 
@@ -22,4 +24,6 @@ User-facing documentation for the Quality Management System.
 ## Related Files
 
 - [QMS-Glossary.md](QMS-Glossary.md) — Consolidated term definitions
-- [../SOP-00X-streamlined.md](../) — Streamlined SOP source copies
+- [QMS-Policy.md](QMS-Policy.md) — Core policy decisions and judgment criteria
+- [START_HERE.md](START_HERE.md) — Decision tree for common workflows
+- [FAQ.md](FAQ.md) — Frequently asked questions
