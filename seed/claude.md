@@ -40,11 +40,11 @@ python qms-cli/qms.py --user claude route {DOC_ID} --approval          # Route f
 
 At the start of each session, read the following QMS documents:
 
-1. `QMS-Docs/QMS-Policy.md` — Core policy decisions and judgment criteria
-2. `QMS-Docs/START_HERE.md` — Decision tree for common workflows
-3. `QMS-Docs/QMS-Glossary.md` — Term definitions
+1. `qms-cli/manual/QMS-Policy.md` — Core policy decisions and judgment criteria
+2. `qms-cli/manual/START_HERE.md` — Decision tree for common workflows
+3. `qms-cli/manual/QMS-Glossary.md` — Term definitions
 
-These three documents provide the context needed for QMS operations. For deeper reference on specific topics, consult the numbered guides in `QMS-Docs/` and type references in `QMS-Docs/types/`.
+These three documents provide the context needed for QMS operations. For deeper reference on specific topics, consult the numbered guides in `qms-cli/manual/guides/` and type references in `qms-cli/manual/types/`.
 
 ---
 

@@ -110,34 +110,6 @@ def test_init_creates_complete_structure(clean_project):
         assert inbox.is_dir(), f"Inbox for {user} should exist"
 
 
-def test_init_seeds_docs(clean_project):
-    """
-    Verify init seeds QMS-Docs/ with educational documentation.
-
-    Verifies: REQ-INIT-006
-    """
-    run_qms_init(clean_project)
-
-    # [REQ-INIT-006] Documentation is seeded
-    docs_dir = clean_project / "QMS-Docs"
-    assert docs_dir.is_dir(), "QMS-Docs/ should exist"
-
-    # Key files must be present
-    assert (docs_dir / "QMS-Policy.md").exists(), "QMS-Policy.md should be seeded"
-    assert (docs_dir / "QMS-Glossary.md").exists(), "QMS-Glossary.md should be seeded"
-    assert (docs_dir / "START_HERE.md").exists(), "START_HERE.md should be seeded"
-
-    # Guides and type references should be present
-    assert (docs_dir / "guides").is_dir(), "guides/ subdirectory should exist"
-    assert (docs_dir / "types").is_dir(), "types/ subdirectory should exist"
-
-    # At least some guide and type files
-    guides = list((docs_dir / "guides").glob("*.md"))
-    assert len(guides) >= 1, "At least one guide should be seeded"
-    types = list((docs_dir / "types").glob("*.md"))
-    assert len(types) >= 1, "At least one type reference should be seeded"
-
-
 def test_init_seeds_templates(clean_project):
     """
     Verify init seeds document templates.
@@ -231,19 +203,6 @@ def test_init_blocked_by_existing_config(clean_project):
     result = run_qms_init(clean_project)
     assert result.returncode != 0, "Init should fail with existing qms.config.json"
     assert "config" in result.stdout.lower() or "already exists" in result.stdout.lower()
-
-
-def test_init_blocked_by_existing_qms_docs(clean_project):
-    """
-    Verify init is blocked when QMS-Docs/ directory exists.
-
-    Verifies: REQ-INIT-009
-    """
-    (clean_project / "QMS-Docs").mkdir()
-
-    result = run_qms_init(clean_project)
-    assert result.returncode != 0, "Init should fail with existing QMS-Docs/"
-    assert "QMS-Docs" in result.stdout or "already exists" in result.stdout.lower()
 
 
 def test_init_blocked_by_existing_claude_md(clean_project):
@@ -454,7 +413,52 @@ def test_init_with_root_flag(clean_project, tmp_path_factory):
         "Config should be in --root target"
     assert (target / "QMS" / "CR").is_dir(), \
         "QMS/CR should be in --root target"
-    assert (target / "QMS-Docs").is_dir(), \
-        "QMS-Docs should be in --root target"
     assert (target / "CLAUDE.md").exists(), \
         "CLAUDE.md should be in --root target"
+
+
+# ============================================================================
+# Test: Documentation Directories Exist in Distribution
+# ============================================================================
+
+def test_docs_directory_exists():
+    """
+    Verify qms-cli ships with a docs/ directory containing software documentation.
+
+    Verifies: REQ-INIT-006
+    """
+    qms_cli_root = Path(__file__).parent.parent.parent
+    docs_dir = qms_cli_root / "docs"
+
+    assert docs_dir.is_dir(), "docs/ directory should exist in qms-cli"
+    assert (docs_dir / "README.md").exists(), "docs/README.md should exist"
+    assert (docs_dir / "cli-reference.md").exists(), "docs/cli-reference.md should exist"
+    assert (docs_dir / "getting-started.md").exists(), "docs/getting-started.md should exist"
+
+
+def test_manual_directory_exists():
+    """
+    Verify qms-cli ships with a manual/ directory containing QMS operational documentation.
+
+    Verifies: REQ-INIT-006
+    """
+    qms_cli_root = Path(__file__).parent.parent.parent
+    manual_dir = qms_cli_root / "manual"
+
+    assert manual_dir.is_dir(), "manual/ directory should exist in qms-cli"
+    assert (manual_dir / "QMS-Policy.md").exists(), "manual/QMS-Policy.md should exist"
+    assert (manual_dir / "QMS-Glossary.md").exists(), "manual/QMS-Glossary.md should exist"
+    assert (manual_dir / "START_HERE.md").exists(), "manual/START_HERE.md should exist"
+    assert (manual_dir / "guides").is_dir(), "manual/guides/ should exist"
+    assert (manual_dir / "types").is_dir(), "manual/types/ should exist"
+
+
+def test_init_does_not_seed_qms_docs(clean_project):
+    """
+    Verify init does NOT create QMS-Docs/ at the project root.
+
+    Verifies: REQ-INIT-006 (documentation lives in qms-cli, not seeded)
+    """
+    run_qms_init(clean_project)
+    assert not (clean_project / "QMS-Docs").exists(), \
+        "QMS-Docs/ should NOT be created by init"
