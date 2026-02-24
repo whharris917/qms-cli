@@ -4,6 +4,7 @@ QMS Init Command
 Initializes a new QMS project with all required infrastructure.
 
 Created as part of CR-036: Add qms-cli initialization and bootstrapping functionality
+Updated by CR-104: Marker-based targeting, confirmation prompt, --yes flag
 """
 import json
 import shutil
@@ -16,6 +17,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from registry import CommandRegistry
 from qms_config import CONFIG_FILE
+
+# Marker file that identifies a QMS project root
+MARKER_FILE = ".claude-qms"
 
 
 # =============================================================================
@@ -63,6 +67,82 @@ def check_clean_runway(root: Path) -> list[str]:
         blockers.append(f"{CONFIG_FILE} already exists at {root / CONFIG_FILE}")
 
     return blockers
+
+
+# =============================================================================
+# Root Resolution
+# =============================================================================
+
+def resolve_root(args) -> tuple[Path | None, str | None]:
+    """
+    Determine the project root directory using marker detection or --root flag.
+
+    Returns:
+        (root_path, error_message) -- one of the two will be None.
+    """
+    # Scenario 2: Explicit --root flag
+    if hasattr(args, 'root') and args.root:
+        root = Path(args.root).resolve()
+        if not root.is_dir():
+            return None, f"ERROR: --root directory does not exist: {root}"
+        return root, None
+
+    # Scenario 1: Look one level up for marker file
+    parent = Path.cwd().resolve().parent
+    if (parent / MARKER_FILE).exists():
+        return parent, None
+
+    # Scenario 3: No marker, no --root
+    return None, (
+        "ERROR: Cannot determine project root.\n"
+        "\n"
+        "qms init requires one of:\n"
+        "\n"
+        "  1. Run from inside a project that has a .claude-qms marker file\n"
+        "     in the parent directory (e.g., from within qms-cli/):\n"
+        "       cd my-project/qms-cli\n"
+        "       python qms.py init\n"
+        "\n"
+        "  2. Use --root to specify the target project directory:\n"
+        "       python qms.py init --root /path/to/my-project\n"
+        "\n"
+        "To get started with a new project, clone the starter repo:\n"
+        "  git clone --recurse-submodules https://github.com/whharris917/claude-qms.git"
+    )
+
+
+# =============================================================================
+# Confirmation Prompt
+# =============================================================================
+
+def show_confirmation(root: Path) -> bool:
+    """
+    Display what will be created and ask for confirmation.
+
+    Returns:
+        True if user confirms, False otherwise.
+    """
+    print(f"The folder {root} will be initialized as a QMS project.")
+    print()
+    print("The following will be created:")
+    print("  qms.config.json           Project configuration")
+    print("  QMS/                      Document storage (CR, INV, TEMPLATE)")
+    print("  QMS/.meta/                Document metadata")
+    print("  QMS/.audit/               Audit trails")
+    print("  QMS/TEMPLATE/             Document templates")
+    print("  .claude/users/            Workspaces for lead, claude, qa, tu")
+    print("  .claude/agents/           Agent definitions (qa.md, tu.md)")
+    print("  .claude/hooks/            Write guard hook")
+    print("  CLAUDE.md                 Orchestrator instructions")
+    print()
+
+    try:
+        response = input("Proceed? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+    return response in ("y", "yes")
 
 
 # =============================================================================
@@ -269,7 +349,8 @@ def seed_agents(root: Path) -> int:
     name="init",
     help="Initialize a new QMS project",
     arguments=[
-        {"flags": ["--root"], "help": "Project root directory (default: current directory)"},
+        {"flags": ["--root"], "help": "Project root directory (requires .claude-qms marker or creates one)"},
+        {"flags": ["--yes", "-y"], "help": "Skip confirmation prompt", "action": "store_true"},
     ],
 )
 def cmd_init(args) -> int:
@@ -284,23 +365,27 @@ def cmd_init(args) -> int:
     - .claude/hooks/ with write guard
     - CLAUDE.md starter orchestrator instructions
 
-    Safety: All checks must pass before any changes are made.
-    """
-    # Determine target root
-    if hasattr(args, 'root') and args.root:
-        root = Path(args.root).resolve()
-    else:
-        root = Path.cwd().resolve()
+    Root resolution:
+    - If --root is provided, uses that directory (places marker if needed)
+    - Otherwise, looks one level up for .claude-qms marker file
+    - Fails with helpful error if neither is available
 
-    print(f"Initializing QMS project at: {root}")
-    print()
+    Safety: All checks must pass before any changes are made.
+    Confirmation: Shows what will be created and asks for confirmation (skip with --yes).
+    """
+    # Resolve project root
+    root, error = resolve_root(args)
+    if error:
+        print(error)
+        return 1
+
+    # Place marker file if --root was used and marker doesn't exist
+    place_marker = hasattr(args, 'root') and args.root and not (root / MARKER_FILE).exists()
 
     # Safety checks
-    print("Running safety checks...")
     blockers = check_clean_runway(root)
 
     if blockers:
-        print()
         print("ERROR: Cannot initialize - existing infrastructure detected:")
         for blocker in blockers:
             print(f"  - {blocker}")
@@ -308,8 +393,22 @@ def cmd_init(args) -> int:
         print("To initialize a new project, choose a clean directory or remove existing files.")
         return 1
 
-    print("  All checks passed")
+    # Confirmation prompt (skip with --yes)
+    skip_confirm = hasattr(args, 'yes') and args.yes
+    if not skip_confirm:
+        if not show_confirmation(root):
+            print("Aborted.")
+            return 1
+    else:
+        print(f"Initializing QMS project at: {root}")
+
     print()
+
+    # Place marker file if needed
+    if place_marker:
+        marker_path = root / MARKER_FILE
+        marker_path.touch()
+        print(f"  Created: {marker_path}")
 
     # Create infrastructure
     print("Creating QMS infrastructure...")

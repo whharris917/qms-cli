@@ -193,9 +193,10 @@ Valid users:
     p_interact.add_argument("--progress", action="store_true", help="Show progress")
     p_interact.add_argument("--compile", action="store_true", help="Preview compiled output")
 
-    # init (CR-036)
+    # init (CR-036, CR-104)
     p_init = subparsers.add_parser("init", help="Initialize a new QMS project")
-    p_init.add_argument("--root", help="Project root directory (default: current directory)")
+    p_init.add_argument("--root", help="Project root directory (requires .claude-qms marker or creates one)")
+    p_init.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
 
     # user (CR-036)
     p_user = subparsers.add_parser("user", help="Manage QMS users")
