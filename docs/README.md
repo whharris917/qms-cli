@@ -17,7 +17,7 @@ qms-cli is a command-line document control system. It manages the lifecycle of c
 
 These docs cover **how to use the tool**: commands, flags, configuration, setup. They are the software documentation for qms-cli.
 
-For **how to operate a QMS** — policy decisions, governance philosophy, when to create which document type, evidence standards, review expectations — see the [QMS Manual](../manual/).
+For **how to operate a QMS** — policy decisions, governance philosophy, when to create which document type, evidence standards, review expectations — see the Quality Manual at `Quality-Manual/` in your project root.
 
 ## Requirements
 

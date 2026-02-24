@@ -438,7 +438,7 @@ def cmd_init(args) -> int:
     print("QMS project initialized successfully!")
     print()
     print("Next steps:")
-    print("  1. Read the QMS Manual at qms-cli/manual/ for how the QMS works")
+    print("  1. Read the Quality Manual at Quality-Manual/ for how the QMS works")
     print("  2. Read the tool docs at qms-cli/docs/ for CLI usage")
     print("  3. Customize CLAUDE.md with your project architecture")
     print("  4. Create your first document: python qms-cli/qms.py --user claude create CR --title \"My Change\"")
