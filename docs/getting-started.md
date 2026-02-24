@@ -116,4 +116,4 @@ python qms-cli/qms.py --user claude status CR-001  # Status of a specific docume
 
 - [CLI Reference](cli-reference.md) — Full command documentation
 - [Users and Permissions](users-and-permissions.md) — Adding users, understanding groups
-- [QMS Manual](../manual/START_HERE.md) — Understanding when and why to use each document type
+- Quality Manual (`Quality-Manual/START_HERE.md`) — Understanding when and why to use each document type

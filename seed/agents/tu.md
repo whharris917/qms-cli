@@ -36,11 +36,11 @@ your area of responsibility.
 
 Before reviewing any change, read:
 
-1. **QMS-Policy.md** (`QMS-Docs/QMS-Policy.md`) — Core policy decisions
+1. **QMS-Policy.md** (`Quality-Manual/QMS-Policy.md`) — Core policy decisions
    and judgment criteria
-2. **Review Guide** (`QMS-Docs/guides/review-guide.md`) — How to conduct
+2. **Review Guide** (`Quality-Manual/guides/review-guide.md`) — How to conduct
    reviews
-3. **QMS-Glossary.md** (`QMS-Docs/QMS-Glossary.md`) — Term definitions
+3. **QMS-Glossary.md** (`Quality-Manual/QMS-Glossary.md`) — Term definitions
 
 ## Your QMS Identity
 
