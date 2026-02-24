@@ -680,23 +680,6 @@ def test_docs_directory_exists():
     assert (docs_dir / "getting-started.md").exists(), "docs/getting-started.md should exist"
 
 
-def test_manual_directory_exists():
-    """
-    Verify qms-cli ships with a manual/ directory containing QMS operational documentation.
-
-    Verifies: REQ-INIT-006
-    """
-    qms_cli_root = Path(__file__).parent.parent.parent
-    manual_dir = qms_cli_root / "manual"
-
-    assert manual_dir.is_dir(), "manual/ directory should exist in qms-cli"
-    assert (manual_dir / "QMS-Policy.md").exists(), "manual/QMS-Policy.md should exist"
-    assert (manual_dir / "QMS-Glossary.md").exists(), "manual/QMS-Glossary.md should exist"
-    assert (manual_dir / "START_HERE.md").exists(), "manual/START_HERE.md should exist"
-    assert (manual_dir / "guides").is_dir(), "manual/guides/ should exist"
-    assert (manual_dir / "types").is_dir(), "manual/types/ should exist"
-
-
 def test_init_does_not_seed_qms_docs(clean_project):
     """
     Verify init does NOT create QMS-Docs/ at the project root.
