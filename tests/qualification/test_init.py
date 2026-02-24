@@ -2,7 +2,7 @@
 QMS CLI Qualification Tests: Initialization and User Management
 
 Tests for the init command and user management functionality.
-Verifies requirements: INIT-001 through INIT-010, USER-001, USER-002, USER-003
+Verifies requirements: INIT-001 through INIT-012, USER-001, USER-002, USER-003
 """
 import json
 import subprocess
@@ -17,14 +17,47 @@ import pytest
 # ============================================================================
 
 def run_qms_init(project_path, *args):
-    """Execute qms init command and return result."""
+    """
+    Execute qms init command and return result.
+
+    By default, passes --root and --yes to bypass marker detection and
+    confirmation prompt. Tests for those specific behaviors use
+    run_qms_init_raw() instead.
+    """
+    qms_cli = Path(__file__).parent.parent.parent / "qms.py"
+    arg_list = list(args)
+
+    # If caller didn't specify --root, add it pointing to project_path
+    if "--root" not in arg_list:
+        arg_list.extend(["--root", str(project_path)])
+
+    # If caller didn't specify --yes or -y, add --yes
+    if "--yes" not in arg_list and "-y" not in arg_list:
+        arg_list.append("--yes")
+
+    cmd = [sys.executable, str(qms_cli), "init"] + arg_list
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=project_path
+    )
+    return result
+
+
+def run_qms_init_raw(cwd, *args):
+    """
+    Execute qms init command without any default flags.
+
+    Used for testing marker detection, confirmation prompt, and no-context behavior.
+    """
     qms_cli = Path(__file__).parent.parent.parent / "qms.py"
     cmd = [sys.executable, str(qms_cli), "init"] + list(args)
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
-        cwd=project_path
+        cwd=cwd
     )
     return result
 
@@ -263,6 +296,217 @@ def test_init_seeds_claude_md(clean_project):
 
 
 # ============================================================================
+# Test: Marker Detection (CR-104)
+# ============================================================================
+
+def test_init_detects_marker_in_parent(tmp_path):
+    """
+    Verify init finds .claude-qms marker one level up and uses parent as root.
+
+    Verifies: REQ-INIT-011
+    """
+    # Set up: parent has marker, child simulates qms-cli/
+    parent = tmp_path / "project"
+    parent.mkdir()
+    (parent / ".claude-qms").touch()
+    child = parent / "qms-cli"
+    child.mkdir()
+
+    # Run init from child with --yes (no --root)
+    result = run_qms_init_raw(child, "--yes")
+    assert result.returncode == 0, f"Init should succeed with marker in parent: {result.stderr}\n{result.stdout}"
+
+    # Verify structure created in parent, not child
+    assert (parent / "qms.config.json").exists(), "Config should be in parent (marker location)"
+    assert (parent / "QMS" / "CR").is_dir(), "QMS/CR should be in parent"
+    assert not (child / "qms.config.json").exists(), "Config should NOT be in child"
+
+
+def test_init_no_context_fails(tmp_path):
+    """
+    Verify init fails with helpful error when no marker and no --root.
+
+    Verifies: REQ-INIT-011
+    """
+    # No marker file anywhere, no --root flag
+    result = run_qms_init_raw(tmp_path)
+    assert result.returncode != 0, "Init should fail without marker or --root"
+    assert "Cannot determine project root" in result.stdout, \
+        "Error should explain the problem"
+    assert ".claude-qms" in result.stdout, \
+        "Error should mention the marker file"
+    assert "--root" in result.stdout, \
+        "Error should mention the --root alternative"
+
+
+# ============================================================================
+# Test: Confirmation Prompt (CR-104)
+# ============================================================================
+
+def test_init_confirmation_aborts_on_no(tmp_path):
+    """
+    Verify init aborts when user responds 'N' to confirmation prompt.
+
+    Verifies: REQ-INIT-012
+    """
+    qms_cli = Path(__file__).parent.parent.parent / "qms.py"
+    cmd = [sys.executable, str(qms_cli), "init", "--root", str(tmp_path)]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        input="N\n",
+        cwd=tmp_path
+    )
+    assert result.returncode != 0, "Init should abort when user says N"
+    assert "Aborted" in result.stdout, "Should print 'Aborted'"
+    assert not (tmp_path / "qms.config.json").exists(), \
+        "No files should be created after abort"
+
+
+def test_init_confirmation_aborts_on_empty(tmp_path):
+    """
+    Verify init aborts when user provides empty response (default is N).
+
+    Verifies: REQ-INIT-012
+    """
+    qms_cli = Path(__file__).parent.parent.parent / "qms.py"
+    cmd = [sys.executable, str(qms_cli), "init", "--root", str(tmp_path)]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        input="\n",
+        cwd=tmp_path
+    )
+    assert result.returncode != 0, "Init should abort on empty response (default N)"
+    assert not (tmp_path / "qms.config.json").exists(), \
+        "No files should be created after abort"
+
+
+def test_init_confirmation_proceeds_on_yes(tmp_path):
+    """
+    Verify init proceeds when user responds 'y' to confirmation prompt.
+
+    Verifies: REQ-INIT-012
+    """
+    qms_cli = Path(__file__).parent.parent.parent / "qms.py"
+    cmd = [sys.executable, str(qms_cli), "init", "--root", str(tmp_path)]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        input="y\n",
+        cwd=tmp_path
+    )
+    assert result.returncode == 0, f"Init should proceed on 'y': {result.stderr}\n{result.stdout}"
+    assert (tmp_path / "qms.config.json").exists(), \
+        "Files should be created after confirmation"
+
+
+def test_init_confirmation_shows_artifact_list(tmp_path):
+    """
+    Verify confirmation prompt lists the artifacts that will be created.
+
+    Verifies: REQ-INIT-012
+    """
+    qms_cli = Path(__file__).parent.parent.parent / "qms.py"
+    cmd = [sys.executable, str(qms_cli), "init", "--root", str(tmp_path)]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        input="N\n",
+        cwd=tmp_path
+    )
+    # Even though we abort, the prompt should have been shown
+    assert "qms.config.json" in result.stdout, "Prompt should list qms.config.json"
+    assert "QMS/" in result.stdout, "Prompt should list QMS/"
+    assert "CLAUDE.md" in result.stdout, "Prompt should list CLAUDE.md"
+    assert ".claude/users/" in result.stdout, "Prompt should list .claude/users/"
+    assert "Proceed?" in result.stdout, "Prompt should ask to proceed"
+
+
+def test_init_yes_flag_skips_confirmation(clean_project):
+    """
+    Verify --yes flag skips the confirmation prompt entirely.
+
+    Verifies: REQ-INIT-012
+    """
+    result = run_qms_init(clean_project)  # run_qms_init adds --yes by default
+    assert result.returncode == 0, f"Init with --yes should succeed: {result.stderr}"
+    assert "Proceed?" not in result.stdout, \
+        "Confirmation prompt should not appear with --yes"
+    assert (clean_project / "qms.config.json").exists(), \
+        "Files should be created with --yes"
+
+
+def test_init_aborts_on_eof(tmp_path):
+    """
+    Verify init aborts gracefully when stdin is closed (EOF).
+
+    Verifies: REQ-INIT-012
+    """
+    qms_cli = Path(__file__).parent.parent.parent / "qms.py"
+    cmd = [sys.executable, str(qms_cli), "init", "--root", str(tmp_path)]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        input="",  # EOF immediately
+        cwd=tmp_path
+    )
+    assert result.returncode != 0, "Init should abort on EOF"
+    assert not (tmp_path / "qms.config.json").exists(), \
+        "No files should be created after EOF abort"
+
+
+# ============================================================================
+# Test: --root with Marker Placement (CR-104)
+# ============================================================================
+
+def test_init_root_places_marker(tmp_path):
+    """
+    Verify --root places .claude-qms marker in target directory.
+
+    Verifies: REQ-INIT-010
+    """
+    target = tmp_path / "my-project"
+    target.mkdir()
+
+    result = run_qms_init(tmp_path, "--root", str(target), "--yes")
+    assert result.returncode == 0, f"Init with --root should succeed: {result.stderr}"
+
+    # Marker should be placed
+    assert (target / ".claude-qms").exists(), \
+        ".claude-qms marker should be placed by --root"
+
+    # QMS structure should be in target
+    assert (target / "qms.config.json").exists(), \
+        "Config should be in --root target"
+    assert (target / "QMS" / "CR").is_dir(), \
+        "QMS/CR should be in --root target"
+
+
+def test_init_root_does_not_duplicate_marker(tmp_path):
+    """
+    Verify --root does not create a duplicate marker if one already exists.
+
+    Verifies: REQ-INIT-010
+    """
+    target = tmp_path / "my-project"
+    target.mkdir()
+    (target / ".claude-qms").touch()
+
+    result = run_qms_init(tmp_path, "--root", str(target), "--yes")
+    assert result.returncode == 0, f"Init should succeed: {result.stderr}"
+
+    # Should not print "Created: .claude-qms" since it already existed
+    assert ".claude-qms" not in result.stdout or "Created" not in result.stdout.split(".claude-qms")[0].split("\n")[-1], \
+        "Should not re-create existing marker"
+
+
+# ============================================================================
 # Test: User Management
 # ============================================================================
 
@@ -403,7 +647,7 @@ def test_init_with_root_flag(clean_project, tmp_path_factory):
     target = tmp_path_factory.mktemp("target_project")
 
     # Run init with --root flag
-    result = run_qms_init(clean_project, "--root", str(target))
+    result = run_qms_init(clean_project, "--root", str(target), "--yes")
     assert result.returncode == 0, f"Init with --root should succeed: {result.stderr}"
 
     # Verify structure created in target, not clean_project
